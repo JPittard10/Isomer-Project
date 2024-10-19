@@ -1,0 +1,4 @@
+Awk command to trim and bunch random spectra into 240 bins
+
+ awk 'NR <= 6000 {sum +=$1; count++; if (count %25 ==0) {print sum; s
+um=0;}}' Input_File_Name.txt > Output_File_Name.txt
