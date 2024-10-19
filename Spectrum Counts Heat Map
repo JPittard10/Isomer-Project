@@ -5,20 +5,17 @@ import matplotlib.pyplot as plt
 with open(r'C:\Isomer_Project\ARMY_200_Matrix\ARMY_200_Matrix\Random_spectra_240_bins\A1_Cl37_c10_HPGe_301sec_trimmed_bunched_240.TXT', 'r') as spectra1, open(r'C:\Isomer_Project\ARMY_200_Matrix\ARMY_200_Matrix\Random_spectra_240_bins\A1_P_HPGe_378sec_trimmed_bunched_240.txt', 'r') as spectra2:
     data1 = spectra1.read()
     data2 = spectra2.read()
-    data1_array_unflipped = list(map(int, data1.split()))
-    data1_array = data1_array_unflipped[::-1]
+    data1_array = list(map(int, data1.split()))
     data2_array = list(map(int, data2.split()))
 
 
 #list the bins from 1 to 240
 bin_array = list(range(1,241))
-bin_array_flipped = bin_array[:: -1]
-
 
 
 # Graph of the counts vs the bin#
 fig, ax1 = plt.subplots()
-ax1.plot(bin_array_flipped,data1_array)
+ax1.plot(bin_array,data1_array)
 ax1.set(xlabel='Bin #', ylabel='Counts', title="Spectra 1")
 plt.show()
 
@@ -44,7 +41,7 @@ plt.colorbar(im, label='Counts')
 
 ax.set_xticks(np.arange(0,240,20))
 ax.set_yticks(np.arange(0,240,20))
-
+ax.invert_yaxis()
 
 plt.xlabel('Spectra 2, Bin #')
 plt.ylabel('Spectra 1, Bin #')
