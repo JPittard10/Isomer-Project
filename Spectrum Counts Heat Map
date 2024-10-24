@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
+from matplotlib import cbook, cm
+from matplotlib.colors import LightSource
 
 
 
@@ -19,20 +21,21 @@ with open(File_1) as spectra1, open(File_2) as spectra2:
 
 
 
-#list the bins from 1 to 240
+#list the bins from 1 to 240 and the corresponding energy (keV)
 bin_array = list(range(1,241))
+Energy_bin = 0.64844 + 0.27383*np.array((25 * np.array(bin_array))-12.5)
 
 
 
 # Graph of the counts vs the bin#
 fig, ax1 = plt.subplots()
-ax1.plot(bin_array,data1_array)
-ax1.set(xlabel='Bin #', ylabel='Counts', title="Spectra 1")
+ax1.plot(Energy_bin,data1_array)
+ax1.set(xlabel='Energy (keV)', ylabel='Counts', title="Spectra 1")
 plt.show()
 
 fig, ax2 = plt.subplots()
-ax2.plot(bin_array,data2_array)
-ax2.set(xlabel='Bin #', ylabel='Counts',title="Spectra 2")
+ax2.plot(Energy_bin,data2_array)
+ax2.set(xlabel='Energy (keV)', ylabel='Counts',title="Spectra 2")
 plt.show()
 
 
@@ -44,17 +47,51 @@ for i in range(len(data1_array)):
     for j in range(len(data2_array)):
         both_array[i,j] = data1_array[i] + data2_array[j]
 
-data_12 = np.array(both_array).reshape(len(data1_array), len(data2_array))
-
+data_12 = np.array(both_array).reshape(len(Energy_bin), len(Energy_bin))
 fig, ax = plt.subplots()
 im = ax.imshow(data_12, cmap='plasma', aspect='auto', norm=LogNorm(vmin=1, vmax=(np.max(data_12))))
 plt.colorbar(im, label='Counts')
 
 ax.set_xticks(np.arange(0,len(data1_array),(len(data1_array)/12)))
-ax.set_yticks(np.arange(0,len(data2_array),(len(data2_array)/12)))
+ax.set_yticks(np.arange(0,len(data2_array),(len(data1_array)/12)))
 ax.invert_yaxis()
 
-plt.xlabel('Spectra 2, Bin #')
-plt.ylabel('Spectra 1, Bin #')
-plt.title('Heat Map of Spectrum 1 and 2')
+plt.xlabel('Spectra 1, Bin #')
+plt.ylabel('Spectra 2, Bin #')
+plt.title('Spectrum 1 and 2 Energy')
 plt.show()
+
+
+
+#3D Plot
+z = data_12
+x = Energy_bin
+y = Energy_bin
+x,y = np.meshgrid(x,y)
+
+region = np.s_[0:240, 0:240]
+x,y,z = x[region], y[region], z[region]
+
+
+
+fig, ax = plt.subplots(subplot_kw=dict(projection='3d'))
+threeD_norm = LogNorm(vmin=z.min() + 1e-1, vmax=z.max())
+threeD_color = cm.plasma(threeD_norm(z))
+plot_surface = ax.plot_surface(x,y,z, rstride=1, cstride=1, facecolors=threeD_color, linewidth=0,
+                       antialiased = False, shade = False)
+
+plt.xlabel('Spectra 1, Energy (keV)')
+plt.ylabel('Spectra 2, Energy (keV)')
+plt.title('Spectrum 1 and 2 Energy (3D)')
+ax.invert_xaxis()
+
+plt.show()
+
+
+
+#Calculations
+flat_index = np.argmax(data_12)
+row_index, col_index = np.unravel_index(flat_index, data_12.shape)
+max_value = data_12[row_index, col_index]
+print(f"Max Value = {max_value} at Row {row_index}, Column {col_index}")
+
