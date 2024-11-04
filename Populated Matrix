@@ -1,0 +1,99 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+#----------- Opens Local File -----------#
+File1 = r'C:\Isomer_Project\Trimmed_and_Bunched_Spectrums\Calibration_feb_23_HPGE_134428sec_trimmed_bunched_240.txt'
+File2 = r'C:\Isomer_Project\Trimmed_and_Bunched_Spectrums\Calibration_feb_23_HPGE_134428sec_trimmed_bunched_240.txt'
+
+with open(File1) as Spectrum1, open(File2) as Spectrum2:
+    data1 = Spectrum1.read()
+    data2 = Spectrum2.read()
+    data1_array = np.array(list(map(int, data1.split())))
+    data2_array = np.array(list(map(int, data2.split())))
+
+bin_array = list(range(1,241))
+Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
+
+Spec1E_array = np.column_stack((data1_array , Energy_bin))
+Spec2E_array = np.column_stack((data2_array , Energy_bin))
+
+
+#----------- Spectrum Plots -----------#
+
+fig, SP1 = plt.subplots()
+SP1.plot(Energy_bin, data1_array)
+SP1.set(xlabel = 'Energy keV', ylabel = 'Counts', title = 'Spectrum 1')
+plt.show()
+
+fig, SP2 = plt.subplots()
+SP2.plot(Energy_bin, data2_array)
+SP2.set(xlabel = 'Energy keV', ylabel = 'Counts', title = 'Spectrum 2')
+plt.show()
+
+
+#----------- Calculations -----------#
+print('Spectrum 1')
+bin1_num = 1
+scatter1_x = []
+scatter1_y = []
+while (bin1_num >= 0) and (bin1_num <= 239):
+    riemann1 = sum(data1_array[(bin1_num-1):(bin1_num+1)])/ len(data1_array[(bin1_num-1):(bin1_num+1)])
+    if data1_array[bin1_num] > riemann1 + (data1_array.max()/1.2e1):
+        print("-------------------")
+        print('Bin #:',bin_array[bin1_num])
+        print('Energy (keV):',Energy_bin[bin1_num])
+        print('Counts:',data1_array[bin1_num])
+        scatter1_x.append(Energy_bin[bin1_num])
+        scatter1_y.append(data1_array[bin1_num])
+    bin1_num += 1
+    
+print("-------------------")
+
+
+if scatter1_x and scatter1_y:
+    fig, P1 = plt.subplots()
+    P1.scatter(scatter1_x, scatter1_y)
+    P1.set(xlabel='Energy (keV)', ylabel='Counts', title='Spectrum 1 Energy')
+    plt.show()
+
+
+print('Spectrum 2')
+bin2_num = 1
+scatter2_x = []
+scatter2_y = []
+while (bin2_num >= 0) & (bin2_num <= 239):
+    riemann2 = sum(data2_array[(bin2_num-1):(bin2_num+1)])/ len(data2_array[(bin2_num-1):(bin2_num+1)])
+    if data2_array[bin2_num] > riemann2 + (data1_array.max()/1.2e1):
+        print("-------------------")
+        print('Bin #:',bin_array[bin2_num])
+        print('Energy (keV):',Energy_bin[bin2_num])
+        print('Counts:',data2_array[bin2_num])
+        scatter2_x.append(Energy_bin[bin2_num])
+        scatter2_y.append(data2_array[bin2_num])
+    bin2_num += 1
+print("-------------------")
+
+if scatter2_x and scatter2_y:
+    fig, P2 = plt.subplots()
+    P2.scatter(scatter2_x, scatter2_y)
+    P2.set(xlabel="Energy (keV)", ylabel = 'Counts', title = 'Spectrum 1 Energy')
+    plt.show()
+
+
+
+#----------- Heat Map -----------#\
+plot_extend_x = np.linspace(Energy_bin.min(), Energy_bin.max(), len(Energy_bin))
+plot_extend_y = np.linspace(Energy_bin.min(), Energy_bin.max(), len(Energy_bin))
+
+
+
+heatmap, _, _ = np.histogram2d(scatter1_x, scatter2_x, bins =[plot_extend_x, plot_extend_y])
+xpos, ypos = np.meshgrid(Energy_bin.max(), Energy_bin.max(), indexing="ij")
+plt.figure(figsize=(10, 8))
+plt.imshow(heatmap.T, origin='lower', cmap='plasma', 
+           extent=[Energy_bin.min(), Energy_bin.max() , Energy_bin.min(), Energy_bin.max()])
+plt.colorbar(label='Counts')
+plt.xlabel('Energy from Spectrum 1 (keV)')
+plt.ylabel('Energy from Spectrum 2 (keV)')
+plt.title('Energy Matrix of Spectrum 1 and 2')
+plt.show()
