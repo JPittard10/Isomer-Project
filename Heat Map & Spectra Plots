@@ -1,0 +1,68 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+file1 = Path(r'C:\Users\Sydney\OneDrive\Desktop\D.K Lab\Calibration_feb_23_HPGE_134428sec_trimmed_bunched_240.txt')
+file2 = Path(r'C:\Users\Sydney\OneDrive\Desktop\D.K Lab\Calibration_feb_23_HPGE_134428sec_trimmed_bunched_240.txt')
+
+# Function to load spectrum data as an integer array from a file
+def load_spectrum(file_path):
+    return np.loadtxt(file_path, dtype=int)  # loadtxt needed to read the file content as an array
+
+# Load spectra data
+data1_array = load_spectrum(file1)
+data2_array = load_spectrum(file2)
+
+# Generate energy bins
+bin_array = np.arange(1, 241)  # Equivalent to range(1, 241)
+Energy_bin = 0.64844 + 0.27383 * (25 * bin_array - 12.5)
+
+# Combine data and energy bins into 2D arrays
+Spec1E_array = np.column_stack((data1_array, Energy_bin))
+Spec2E_array = np.column_stack((data2_array, Energy_bin))
+
+# If needed to analyze arrays: 
+#print("Spec1E_array:\n", Spec1E_array)
+#print("Spec2E_array:\n", Spec2E_array)
+
+
+# Plot of first spectrum
+plt.figure(figsize=(10, 6))
+plt.plot(Energy_bin, data1_array, label="Spectrum 1", color='blue')
+plt.xlabel("Energy (keV)")
+plt.ylabel("Counts")
+plt.title("Spectrum 1")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+# Plot of second spectrum
+plt.figure(figsize=(10, 6))
+plt.plot(Energy_bin, data2_array, label="Spectrum 2", color='green')
+plt.xlabel("Energy (keV)")
+plt.ylabel("Counts")
+plt.title("Spectrum 2")
+plt.legend()
+plt.grid(True)
+plt.show()
+
+energy_values = np.outer(data1_array, data2_array) 
+print("Energy values shape:", energy_values.shape)
+
+
+# Combine into a single matrix: Spectrum 1, Spectrum 2
+combined_matrix = np.column_stack(( data1_array, data2_array))
+
+# Create the heatmap
+plt.figure(figsize=(10, 6))
+# Use imshow() to render 2D image. 
+plt.imshow(energy_values, aspect='auto', cmap='viridis', interpolation='nearest', origin='lower') 
+
+# Add color-leyend for energy values
+plt.colorbar(label="Energy (keV)")
+
+# Lable 
+plt.xlabel("Counts from Spectrum 1")
+plt.ylabel("Counts from Spectrum 2")
+plt.title("Heatmap of Energy Values Across Spectrum 1 and Spectrum 2")
+plt.show()
