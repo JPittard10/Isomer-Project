@@ -1,0 +1,69 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+import scipy.signal as signal
+
+folder_path=r'C:\Isomer_Project\Trimmed_and_Bunched_Spectrums'
+energy_coin_tot = []
+file_names = [filename for filename in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, filename))]
+
+for file_name in file_names:
+    full_name = os.path.join(folder_path, file_name)
+    File1 = full_name
+    File2 = full_name
+    with open(File1) as Spectrum1, open(File2) as Spectrum2:
+        data1 = Spectrum1.read()
+        data2 = Spectrum2.read()
+        data1_array = np.array(list(map(int, data1.split())))
+        data2_array = np.array(list(map(int, data2.split())))
+    
+    bin_array = list(range(1,241))
+    Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
+
+    #----------- Calculations -----------#
+    peaks1, _ = signal.find_peaks(data1_array, threshold = (data1_array.max()/20e1))
+    peaks2, _ = signal.find_peaks(data2_array, threshold = (data1_array.max()/20e1))
+    peak_energy_1 = (0.64844 + 0.27383 * np.array((25 * np.array(peaks1)) - 12.5))+6
+    peak_energy_2 = (0.64844 + 0.27383 * np.array((25 * np.array(peaks2)) - 12.5))+6
+    
+    energy_coin=[]
+    i = 0
+    while i < len(peak_energy_1):
+        j = 0
+        while j < len(peak_energy_2):
+            energy_pair = np.array([peak_energy_1[i], peak_energy_2[j]])
+            energy_coin.append(energy_pair)
+            j += 1
+        i += 1
+    
+    energy_coin = np.array(energy_coin)
+    energy_coin_tot.append(energy_coin.flatten())
+    #----------- Heat Map -----------#    
+energy_coin_tot = np.concatenate(energy_coin_tot, axis = 0)
+energy_coin_x = energy_coin_tot[::2]
+energy_coin_y = energy_coin_tot[1::2]
+plot_extend_x = np.linspace(Energy_bin.min(), Energy_bin.max(), len(Energy_bin))
+plot_extend_y = np.linspace(Energy_bin.min(), Energy_bin.max(), len(Energy_bin))
+heatmap, _, _ = np.histogram2d(energy_coin_x, energy_coin_y, bins =[plot_extend_x, plot_extend_y])
+plt.figure(figsize=(10, 8))
+plt.imshow(heatmap.T, cmap='jet', norm=LogNorm(vmin=1, vmax=heatmap.max()), aspect='auto', origin='lower', 
+           extent=[Energy_bin.min(), Energy_bin.max() , Energy_bin.min(), Energy_bin.max()])
+plt.colorbar(label='Counts')
+plt.xlabel('Energy from Spectrum 1 (keV)')
+plt.ylabel('Energy from Spectrum 2 (keV)')
+plt.title('Energy Matrix of Spectrum 1 and 2')
+plt.show()
+
+energy_coin_tot = np.reshape(energy_coin_tot, [int(len(energy_coin_tot)/2), 2])
+
+freq = {}
+for energy_point in energy_coin_tot:
+    energy_point_tuple = tuple(round(float(val), 3) for val in energy_point)
+    if (energy_point_tuple in freq):
+        freq[energy_point_tuple] += 1
+    else:
+        freq[energy_point_tuple] = 1
+sorted_freq = sorted(freq.items(), key=lambda item: item[1], reverse=True)
+for key, value in sorted_freq:
+    print(f"{str(key)} : {value}")
