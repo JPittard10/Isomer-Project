@@ -1,0 +1,21 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import scipy.optimize as optimize
+
+rng = np.random.default_rng(803341834101)
+data = rng.normal(1, 10, size=1000)
+counts, bins, _ = plt.hist(data, bins=30, edgecolor='black', density=True, color='blue')
+
+
+def gaussian(x, a, b, c):
+    return a * np.exp(-(x-b)**2/(2*c**2))
+
+bin_centers = 0.5 * (bins[1:] + bins[:-1])
+popt, pcov = optimize.curve_fit(gaussian, bin_centers, counts, p0=[1,1,1])
+a, b, c = popt
+plt.hist(data, bins=30, edgecolor='black', density=True)
+x_fit = np.linspace(min(data), max(data), 1000)
+y_fit = gaussian(x_fit, *popt)
+plt.plot(x_fit, y_fit, 'r-', label=f'Fit: a={a:.2f}, b={b:.2f}, c={c:.2f}')
+plt.legend()
+plt.show()
