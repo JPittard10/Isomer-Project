@@ -1,0 +1,11 @@
+ Here is the calibration data for the HPGe files.
+The number of bins in each file is 16,384.
+
+Energy=a(noise level)+b(scale factor)*bin
+
+Energy units for the calibration are keV.  That is 1000 eV.  
+
+
+Coefficient values ± one standard deviation
+  	a	=0.64844 ± 0.131
+  	b	=0.27383 ± 3.29e-05
