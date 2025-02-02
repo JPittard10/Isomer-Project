@@ -1,0 +1,90 @@
+import numpy as np
+import pandas as pd
+import scipy.signal as scipy
+import matplotlib.pyplot as plt
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+
+#----------- Opens Local File -----------#
+File1 = r'C:\Isomer_Project\Trimmed_and_Bunched_Spectrums\Calibration_feb_23_HPGE_134428sec_trimmed_bunched_240.txt'
+
+with open(File1) as Spectrum1:
+    data1 = Spectrum1.read()
+    data1_array = np.array(list(map(int, data1.split())))
+
+bin_array = list(range(1,241))
+Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
+spec_plot = pd.DataFrame({'Energy': Energy_bin, 'Counts': data1_array})
+
+#----------- Spectrum Plots -----------#
+peaks1, _ = scipy.find_peaks(data1_array, threshold = (data1_array.max()/20e1),
+                             prominence = 2.5e4)
+peak_energy_1 = (0.64844 + 0.27383 * np.array((25 * np.array(peaks1)) - 12.5))+6
+
+#----------- Finds peak Intensities -----------#
+peak_counts = data1_array[peaks1]
+sorted_peaks = np.argsort(peak_counts)[::-1]
+
+print("Peak Energy (keV) | Counts")
+print("-----------------------------")
+
+for i in sorted_peaks:
+    peak_index = peaks1[i]
+    formatted_peak_energy = f"{peak_energy_1[i]:<17.3f}"
+    formatted_counts = f"{data1_array[peak_index]:<10.0f}"
+    print(f"{formatted_peak_energy} | {formatted_counts}")
+
+plot1 = spec_plot.plot(x='Energy', y = 'Counts', title = 'Spectrum 1', 
+                 xlabel='Energy keV', ylabel='Counts', color='blue', figsize=(12,6))
+
+for peak in peak_energy_1:
+    plot1.axvline(x=peak, color='red', alpha=0.3)
+
+print("-----------------------------\n\n")
+
+#----------- Peak Orginization -----------#
+print("Correctly Ordered Peaks:")
+i=0
+for i in range(len(peak_counts)-1):
+    if peak_counts[i+1] < peak_counts[i]:
+        ordered_peaks = peak_energy_1[i]
+        print(f"{ordered_peaks:.3f}")
+    else:
+        print("--------")
+    i += 1
+
+print("\n\n--------------------------------------------------")
+
+#----------- Prepare Data for Decision Tree -----------#
+features = np.column_stack((peak_energy_1, peak_counts))
+
+order_labels = []
+for i in range(len(peak_counts) - 1):
+    if peak_counts[i] > peak_counts[i + 1]:
+        order_labels.append(1)  
+    else:
+        order_labels.append(0)
+        
+order_labels.append(0)  
+features = np.array(features)
+order_labels = np.array(order_labels)
+X_train, X_test, y_train, y_test = train_test_split(features, order_labels, test_size=0.3, random_state=42)
+
+#----------- Train Decision Tree -----------#
+clf = DecisionTreeClassifier(random_state=42)
+clf.fit(X_train, y_train)
+
+#----------- Make Predictions -----------#
+predictions = clf.predict(X_test)
+
+print("Predictions for Peak Order:\n")
+for i, pred in enumerate(predictions):
+    print(f"Peak {i+1} (Energy: {X_test[i][0]:8.3f} keV, Count: {X_test[i][1]:7.0f} ) -> Order Prediction: {pred}")
+
+#----------- Visualizing the Tree -----------#
+from sklearn.tree import plot_tree
+
+plt.figure(figsize=(12,8))
+plot_tree(clf, filled=True, feature_names=["Energy", "Counts"], class_names=["Before", "After"], rounded=True)
+plt.title("Decision Tree: Peak Order Prediction")
+plt.show()
