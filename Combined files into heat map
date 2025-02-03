@@ -1,0 +1,88 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
+from matplotlib.colors import LogNorm
+from pathlib import Path
+
+def load_spectrum(file_path):
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File {file_path} does not exist!")
+    
+    with open(file_path) as spectrum_file:
+        data = spectrum_file.read()
+        return np.array(list(map(int, data.split())))
+
+def calculate_energy(array):
+    return 0.64844 + 0.27383 * (25 * array - 12.5)
+
+def find_spectrum_peaks(data_array, threshold_factor=200):
+    peaks, _ = find_peaks(data_array, height=data_array.max() / threshold_factor)
+    peak_energies = calculate_energy(peaks + 1) + 6  # +1 because bin_array starts from 1
+    return peaks, peak_energies
+
+def calculate_energy_coincidences(peak_energies_1, peak_energies_2):
+    energy_coin = []
+    for e1 in peak_energies_1:
+        for e2 in peak_energies_2:
+            energy_coin.append([e1, e2])
+    return np.array(energy_coin)
+
+def plot_heatmap(energy_coin_x, energy_coin_y, energy_bins, title="Energy Matrix"):
+    plot_extend = np.linspace(energy_bins.min(), energy_bins.max(), len(energy_bins))
+    heatmap, x_edges, y_edges = np.histogram2d(energy_coin_x, energy_coin_y, bins=[plot_extend, plot_extend])
+    
+    plt.figure(figsize=(10, 8))
+    plt.imshow(
+        heatmap.T,
+        cmap='jet',
+        norm=LogNorm(vmin=1, vmax=heatmap.max()),
+        aspect='auto',
+        origin='lower',
+        extent=[energy_bins.min(), energy_bins.max(), energy_bins.min(), energy_bins.max()])
+    plt.colorbar(label='Counts')
+    plt.xlabel('Energy from Spectrum 1 (keV)')
+    plt.ylabel('Energy from Spectrum 2 (keV)')
+    plt.title(title)
+    plt.show()
+
+def analyze_coincidence_frequencies(energy_coin_tot):
+    freq = {}
+    for energy_point in energy_coin_tot:
+        energy_point_tuple = tuple(round(float(val), 3) for val in energy_point)
+        freq[energy_point_tuple] = freq.get(energy_point_tuple, 0) + 1
+    
+    sorted_freq = sorted(freq.items(), key=lambda item: item[1], reverse=True)
+    for key, value in sorted_freq:
+        print(f"{str(key)} : {value}")
+
+def main():
+    folder_path = Path(r'C:\Users\Sydney\OneDrive\Desktop\Nuclear Isomer\Trimmed and Bunched')
+    file_names = [f for f in os.listdir(folder_path) if os.path.isfile(folder_path / f)]
+    
+    if not file_names:
+        raise FileNotFoundError(f"No files found in {folder_path}")
+    bin_array = np.arange(1, 241)
+    energy_bins = calculate_energy(bin_array)
+    all_coincidences = []
+    
+    for file_name in file_names:
+        file_path = folder_path / file_name
+    
+        spectrum_data = load_spectrum(file_path)
+        peaks, peak_energies = find_spectrum_peaks(spectrum_data)
+        print(f"Peaks indices for {file_name}: {peaks}") # Optionally, print peak indices for debugging or analysis
+        energy_coin = calculate_energy_coincidences(peak_energies, peak_energies)
+        all_coincidences.append(energy_coin.flatten())
+    
+    energy_coin_tot = np.concatenate(all_coincidences, axis=0)
+    energy_coin_x = energy_coin_tot[::2]
+    energy_coin_y = energy_coin_tot[1::2]
+    
+    plot_heatmap(energy_coin_x, energy_coin_y, energy_bins)
+    
+    energy_coin_tot = np.reshape(energy_coin_tot, [-1, 2])
+    analyze_coincidence_frequencies(energy_coin_tot)
+
+if __name__ == "__main__":
+    main()
