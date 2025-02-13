@@ -1,0 +1,95 @@
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+import scipy.signal as signal
+import awkward as ak
+import pandas as pd
+import time as time
+import random as random
+
+
+#--------- Seed + input + big array-----------#
+
+random.seed(time.time())
+big_array = np.empty((1,3))
+simulations = int(input("How many simulations?"))
+#--------- Smear Function ---------#
+def smear(unsmeared_data):
+    return np.random.normal(unsmeared_data, unsmeared_data*.02,  1)
+vsmear = np.vectorize(smear)
+
+#--------- Peak Finder--------#
+for index in range(simulations):
+    folder_path=r"C:\Users\mason\OneDrive\Desktop\Isomer_Project\Trimmed_and_Bunched_Spectrums"
+    energy_coin_tot = []
+    file_names = [filename for filename in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, filename))]
+    for file_name in file_names:
+        full_name = os.path.join(folder_path, file_name)
+        File1 = full_name
+        File2 = full_name
+        with open(File1) as Spectrum1, open(File2) as Spectrum2:
+            data1 = Spectrum1.read()
+            data2 = Spectrum2.read()
+            data1_array = np.array(list(map(int, data1.split())))
+            data2_array = np.array(list(map(int, data2.split())))
+        bin_array = list(range(1,241))
+        Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
+        #-------Smeared Arrays--------#
+        data1_array = vsmear(data1_array)
+        data2_array = data1_array
+    #----------- Calculations -----------#
+        peaks1, _ = signal.find_peaks(data1_array, threshold = (data1_array.max()/20e1))
+        peaks2, _ = signal.find_peaks(data2_array, threshold = (data1_array.max()/20e1))
+        peak_energy_1 = (0.64844 + 0.27383 * np.array((25 * np.array(peaks1)) - 12.5))+6
+        peak_energy_2 = (0.64844 + 0.27383 * np.array((25 * np.array(peaks2)) - 12.5))+6
+        energy_coin=[]
+        i = 0
+        while i < len(peak_energy_1):
+            j = 0
+            while j < len(peak_energy_2):
+                energy_pair = np.array([peak_energy_1[i], peak_energy_2[j]])
+                energy_coin.append(energy_pair)
+                j += 1
+            i += 1
+        energy_coin = np.array(energy_coin)
+        energy_coin_tot.append(energy_coin.flatten())
+#----------- Heat Map -----------#    
+    energy_coin_tot = np.concatenate(energy_coin_tot, axis = 0)
+    energy_coin_x = energy_coin_tot[::2]
+    energy_coin_y = energy_coin_tot[1::2]
+#----------- Finds Peaks in Matrix -----------#
+    freq = {}
+    branch_x_tot=[]
+    branch_y_tot=[]
+    energy_coin_tot = np.reshape(energy_coin_tot, [int(len(energy_coin_tot)/2), 2])
+    for energy_point in energy_coin_tot:
+        energy_point_tuple = tuple(round(float(val), 3) for val in energy_point)
+        if (energy_point_tuple in freq):
+            freq[energy_point_tuple] += 1
+        else:
+            freq[energy_point_tuple] = 1
+    sorted_freq = sorted(freq.items(), key=lambda item: item[1], reverse=True)
+#----------- Shows all Coincidences -----------#
+    stay_array = np.empty((1,3))
+    for key, value in sorted_freq:
+        if value >= 15:
+            epic_array = np.array([key[0],key[1],value])
+            stay_array = np.vstack((stay_array, epic_array))
+    if index == 0:
+        big_array = np.concatenate((big_array, stay_array))
+    else:
+        
+        big_array = ak.Array([big_array, stay_array])
+        
+pd.set_option("display.max_rows", None)  # Show all rows
+pd.set_option("display.max_columns", None)  # Show all columns
+pd.set_option("display.width", None)  # Adjusts width to fit screen
+pd.set_option("display.max_colwidth", None)  # Prevents truncating long text
+df = pd.DataFrame(ak.to_list(big_array))
+print(df)
+df.to_csv("output.txt", sep="\t", index=False, header=False)
+
+# columns 0 and 1 correspond to key (coordinates), and column 2 is the value
+
+
