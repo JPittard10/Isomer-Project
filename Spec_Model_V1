@@ -1,0 +1,141 @@
+import numpy as np
+import pandas as pd
+import scipy.signal as scipy
+import scipy.optimize as scipyo
+import matplotlib.pyplot as plt
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+
+#----------- Opens Local File -----------#
+File1 = r"C:\Users\mason\OneDrive\Desktop\Isomer_Project\Trimmed_and_Bunched_Spectrums\Calibration_feb_23_HPGE_134428sec_trimmed_bunched_240.txt"
+
+
+with open(File1) as Spectrum1:
+    data1 = Spectrum1.read()
+    data1_array = np.array(list(map(int, data1.split())))
+
+bin_array = list(range(1,241))
+Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
+spec_plot = pd.DataFrame({'Energy': Energy_bin, 'Counts': data1_array})
+
+#----------- Spectrum Plots -----------#
+peaks1, _ = scipy.find_peaks(data1_array, threshold = (data1_array.max()/20e1),
+                             prominence = 2.5e4)
+#------------ rel_height is very important, can be fine tuned more--------#
+width, width_heights, left_ips, right_ips = scipy.peak_widths(data1_array, peaks1, rel_height=0.08)
+peak_energy_1 = (0.64844 + 0.27383 * np.array((25 * np.array(peaks1)) - 12.5))+6
+#----------- Finds peak Intensities -----------#
+peak_counts = data1_array[peaks1]
+sorted_peaks = np.argsort(peak_counts)[::-1]
+
+print("Peak Energy (keV) | Counts")
+print("-----------------------------")
+
+for i in sorted_peaks:
+    peak_index = peaks1[i]
+    formatted_peak_energy = f"{peak_energy_1[i]:<17.3f}"
+    formatted_counts = f"{data1_array[peak_index]:<10.0f}"
+    print(f"{formatted_peak_energy} | {formatted_counts}")
+plt.figure(1)
+plot1 = spec_plot.plot(x='Energy', y = 'Counts', title = 'Raw Spectrum', 
+                 xlabel='Energy keV', ylabel='Counts', color='blue', figsize=(12,6))
+
+for peak in peak_energy_1:
+    plot1.axvline(x=peak, color='red', alpha=0.3)
+
+plt.figure(2)
+
+print("-----------------------------\n\n")
+
+
+def linear_fill(x1,x2,y1,y2,width):
+    fill_x = np.linspace(x1, x2, num= width)
+    fill_y = np.linspace(y1, y2, num= width)
+    return(fill_y)
+#---------peak_remover and exponential fitter require cutting off the linear segment towards the beginning, done manually at the moment--------#
+def peak_remover(y_axis,peaks1, left_ips, right_ips):
+    left_ips = np.int64(left_ips)  -1
+    right_ips = np.int64(right_ips) +1
+    for i in range(len(peaks1)):
+        ####### linear part includes first 2 peaks #########
+        if i > 1:
+            y_axis[left_ips[i]:right_ips[i]] = linear_fill(left_ips[i], right_ips[i], y_axis[left_ips[i]], y_axis[right_ips[i]], (right_ips[i]-left_ips[i]))
+    return(y_axis)
+
+y_smoothed = peak_remover(data1_array, peaks1, left_ips, right_ips)
+
+#--------------Smoothed Spectrum Plot----------------#
+plt.figure(3)
+spec_plot2 = pd.DataFrame({'Energy': Energy_bin, 'Counts': y_smoothed})
+plot2 = spec_plot2.plot(x='Energy', y = 'Counts', title = 'Spectrum Smoothed with Exponential Fit', 
+                 xlabel='Energy keV', ylabel='Counts', color='blue', figsize=(12,6))
+#-----------Exponential Fit-----------#
+def exponential_func(x, a, b, c):
+    return a * np.exp(b * x) + c
+Energy_bin_fit = Energy_bin[peaks1[2]:-1]
+y_smoothed_fit = y_smoothed[peaks1[2]:-1]
+# b value estimated by looking at initial point and 400 point
+popt, pcov = scipyo.curve_fit(exponential_func, Energy_bin_fit, y_smoothed_fit, p0=((1.25*1000000),-0.0045814537,0), maxfev=100000000)
+
+#-----------Exponential Fit Plot-----------#
+plt.plot(Energy_bin_fit, exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2]), color='red')
+
+#--------------Linear + Exponential fit, gaussian noise-------------#
+plt.figure(4)
+exp_part = exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2])
+lin_part = np.linspace(y_smoothed[0],y_smoothed[peaks1[1]], num=peaks1[1]+6)
+model_true = np.concatenate((lin_part, exp_part))
+plt.figure(5)
+#-----------Simulated Spectrum with no peaks--------------#
+
+#-----------Adding peaks into simulation-----------------#
+
+def gaussian_peak(x_range,height,center,width):
+    return( height * np.exp(-((x_range-center) **2)/(2 * width ** 2)))
+    
+
+
+def peak_inserter(Energy_bin, left_ips, right_ips, peaks1, width, data1_array, width_heights):
+    left_ips = np.int64(left_ips)  -1
+    right_ips = np.int64(right_ips) 
+    just_peaks = np.zeros(len(Energy_bin))
+    for i in range(len(peaks1)):
+        just_peaks[left_ips[i]:right_ips[i]] = gaussian_peak(np.linspace(left_ips[i], right_ips[i], right_ips[i]-left_ips[i]), width_heights[i], peaks1[i], (right_ips[i]-left_ips[i]))
+    return(just_peaks)
+just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks1, width, data1_array, width_heights)
+
+plt.figure(7)
+spec_plot4 = pd.DataFrame({'Energy': Energy_bin, 'Counts': just_peaks})
+plot4 = spec_plot4.plot(x='Energy', y = 'Counts', title = 'Just Peaks', 
+                 xlabel='Energy keV', ylabel='Counts', color='blue', figsize=(12,6))
+
+model = np.maximum(just_peaks, model_true)
+
+plt.figure(8)
+spec_plot5 = pd.DataFrame({'Energy': Energy_bin, 'Counts': model})
+plot5 = spec_plot5.plot(x='Energy', y = 'Counts', title = 'Base Model', 
+                 xlabel='Energy keV', ylabel='Counts', color='blue', figsize=(12,6))
+# noise model needs some work prbably
+#------ Taking the avg of 10 models
+added_sims = np.zeros(len(model))
+for _ in range(10):
+    noise = np.random.normal(loc=0, scale = 0.032, size= len(model_true))
+    model_noisy = model * (1+ noise)
+    added_sims = added_sims + model_noisy
+avg_sims = added_sims/10
+
+plt.figure(9)
+spec_plot6 = pd.DataFrame({'Energy': Energy_bin, 'Counts': model_noisy})
+plot6 = spec_plot6.plot(x='Energy', y = 'Counts', title = 'Smeared Model', 
+                 xlabel='Energy keV', ylabel='Counts', color='blue', figsize=(12,6))
+
+# left linear side needs some work, but overall there are gaussians around peaks
+difference = abs(avg_sims - data1_array)
+
+plt.figure(10)
+spec_plot10 = pd.DataFrame({'Energy': Energy_bin, 'Counts': difference})
+plot10 = spec_plot10.plot(x='Energy', y = 'Counts', title = 'Difference Between Model and Actual Data', 
+                 xlabel='Energy keV', ylabel='Counts', color='blue', figsize=(12,6))
+for peak in peak_energy_1:
+    plot10.axvline(x=peak, color='red', alpha=0.3)
+
