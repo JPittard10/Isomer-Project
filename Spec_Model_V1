@@ -117,7 +117,7 @@ def peak_inserter(Energy_bin, left_ips, right_ips, peaks1, width, data1_array, w
     right_ips = np.int64(right_ips) 
     just_peaks = np.zeros(len(Energy_bin))
     for i in range(len(peaks1)):
-        just_peaks[left_ips[i]:right_ips[i]] = gaussian_peak(np.linspace(left_ips[i], right_ips[i], right_ips[i]-left_ips[i]), width_heights[i], peaks1[i], (right_ips[i]-left_ips[i]))
+        just_peaks[left_ips[i]:right_ips[i]] = gaussian_peak(np.linspace(left_ips[i], right_ips[i], right_ips[i]-left_ips[i]), peak_counts[i], peaks1[i], (right_ips[i]-left_ips[i]))
     return(just_peaks)
 just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks1, width, data1_array, width_heights)
 
