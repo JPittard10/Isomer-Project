@@ -5,6 +5,7 @@ import pandas as pd
 import scipy.signal as scipy
 import scipy.optimize as scipyo
 import matplotlib.pyplot as plt
+import scipy.optimize as optimize
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 
@@ -36,26 +37,27 @@ def exponential_func(x, a, b, c):
     return a * np.exp(b * x) + c
 
 
-def gaussian_peak(x_range,height,center,width):
+def gaussian(x_range,height,center,width):
     return( height * np.exp(-((x_range-center) ** 2)/(2 * width ** 2)))
 
 
 def peak_inserter(Energy_bin, left_ips, right_ips, peaks, width, data1_array, width_heights):
-    left_ips = np.int64(left_ips) - 1
-    right_ips = np.int64(right_ips) 
     just_peaks = np.zeros(len(Energy_bin))
     peak_counts = data1_array[peaks]
     for i in range(len(peaks)):
-        rand_x = random.uniform(-5, 5)
+        rand_x = random.uniform(-5,5)
         rand_w = np.random.normal(1.03, 0.01)
-        left_end = (left_ips[i] + rand_x)
-        right_end = (right_ips[i] + rand_x)
-        peak_xrange = (np.arange(left_end, right_end, right_end - left_end))
+        left_end = left_ips[i] + rand_x
+        right_end = right_ips[i] + rand_x
+        num_points = max(1, int(np.ceil(right_end - left_end)))
+        peak_xrange = np.linspace(left_end, right_end, num=num_points)       
         peak_height = peak_counts[i]
-        peak_center =  (peaks[i] + rand_x)
-        peak_width = ((right_end - left_end) * rand_w)
-        just_peaks[left_ips[i]:right_ips[i]] = gaussian_peak(peak_xrange, peak_height, peak_center, peak_width)
-    return(just_peaks)
+        peak_center = peaks[i] + rand_x
+        peak_width = (right_end - left_end) * rand_w
+        gaussian_values = gaussian(peak_xrange, peak_height, peak_center, peak_width)
+        int_indices = np.round(peak_xrange).astype(int)
+        np.add.at(just_peaks, int_indices, gaussian_values)
+    return just_peaks
 
 
 # Name: Sir_Peaks_plotalot
@@ -91,7 +93,6 @@ def sir_peaks_displayalot(plot_array, plot_name):
         formatted_counts = f"{plot_array[peak_index]:<10.0f}"
         print(f"{formatted_peak_energy} | {formatted_counts}")
     print("-----------------------------")
-
     print(f"Peaks For Plot '{plot_name}'")
     print("Peak Energy (keV)")
     for energy in plot_peaks_energy:
@@ -110,7 +111,6 @@ def plot_func(x_axis_data, y_axis_data, x_axis_name, y_axis_name, title_name, x_
     plot = spec_plot.plot(x = x_axis_name, y = y_axis_name, title = title_name,
                           xlabel = x_axis_unit, ylabel = y_axis_unit, color = color_type, figsize = (12,6))
     return(plot)
-    plt.show()
 
 
 # -------------- Pulls spectrum out of text file --------------#
@@ -128,6 +128,7 @@ Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
 
 raw_spec_plot = plot_func(Energy_bin, data1_array, 'Energy', 'Counts', 'Raw Spectrum', 'Energy (keV)', 'Counts', 'blue')
 peaks_raw_spec = sir_peaks_plotalot(data1_array, raw_spec_plot)
+plt.show()
 
 #------------ rel_height is very important, can be fine tuned more--------#
 
@@ -184,18 +185,39 @@ avg_sims = added_sims/10
 #-----------Plot of model smeared plot-----------------#
 
 smeared_model_plot = plot_func(Energy_bin, model_noisy, 'Energy', 'Counts', 'Smeared Model', 'Energy (keV)', 'Counts', 'blue')
-
 sir_peaks_plotalot(model_noisy, smeared_model_plot)
+plt.show()
 
 #----------- Differece plot-----------------#
 
 # left linear side needs some work, but overall there are gaussians around peaks
-difference = (avg_sims - data1_array)
+
+difference = (model_noisy - data1_array)
 
 Smeared_model_plot = plot_func(Energy_bin, difference, 'Energy', 'Counts', 'Difference Between Model and Actual Data', 'Energy (keV)', 'Counts', 'blue')
+plt.show()
+
+#-------------------- Difference Histogram ----------------#
+
+count_num = np.linspace( difference.min(), difference.max(), (len(Energy_bin)+1))
+plt.figure(figsize=(8, 6))
+counts, bins, _ = plt.hist(difference, len(count_num))
+plt.xlabel("Distance from Centerline")
+plt.ylabel("Frequency")
+plt.title("Histogram of Distance from Centerline")
+
+bin_centers = 0.5 * (bins[:-1] + bins[1:])
+popt, pcov = optimize.curve_fit(gaussian, bin_centers, counts, p0=[max(difference),
+                                np.mean(difference), np.std(difference)])
+a, b, c = popt
+x_fit =  np.linspace( difference.max(), difference.min(), 100)
+y_fit = gaussian(x_fit, *popt)
+plt.plot(x_fit, y_fit, 'r-', label=f'Fit: Amplitude={a:.2f}, Mean={b:.2f}, Std={c:.2f}')
+plt.legend()
+plt.show()
 
 #------- Finding Peaks in difference plot -------#
 
-#sir_peaks_displayalot(data1_array, 'Base Model')
+sir_peaks_displayalot(data1_array, 'Base Model')
 
-#sir_peaks_displayalot(model_noisy, 'Smeared model')
+sir_peaks_displayalot(model_noisy, 'Smeared model')
