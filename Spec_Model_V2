@@ -21,14 +21,15 @@ def linear_fill(x1,x2,y1,y2,width):
     return(fill_y)
 
 
-def peak_remover(y_axis,peaks1, left_ips, right_ips):
+def peak_remover(array_with_peaks, peaks, left_ips, right_ips):
+    temp_array = array_with_peaks.copy()
     left_ips = np.int64(left_ips) - 1
     right_ips = np.int64(right_ips) + 1
-    for i in range(len(peaks1)):
+    for i in range(len(peaks)):
         ####### linear part includes first 2 peaks #########
         if i > 1:
-            y_axis[left_ips[i]:right_ips[i]] = linear_fill(left_ips[i], right_ips[i], y_axis[left_ips[i]], y_axis[right_ips[i]], (right_ips[i]-left_ips[i]))
-    return(y_axis)
+            temp_array[left_ips[i]:right_ips[i]] = linear_fill(left_ips[i], right_ips[i], temp_array[left_ips[i]], temp_array[right_ips[i]], (right_ips[i]-left_ips[i]))
+    return(temp_array)
 
 
 def exponential_func(x, a, b, c):
@@ -39,18 +40,19 @@ def gaussian_peak(x_range,height,center,width):
     return( height * np.exp(-((x_range-center) ** 2)/(2 * width ** 2)))
 
 
-def peak_inserter(Energy_bin, left_ips, right_ips, peaks1, width, data1_array, width_heights):
+def peak_inserter(Energy_bin, left_ips, right_ips, peaks, width, data1_array, width_heights):
     left_ips = np.int64(left_ips) - 1
     right_ips = np.int64(right_ips) 
     just_peaks = np.zeros(len(Energy_bin))
-    for i in range(len(peaks1)):
+    peak_counts = data1_array[peaks]
+    for i in range(len(peaks)):
         rand_x = random.uniform(-5, 5)
         rand_w = np.random.normal(1.03, 0.01)
         left_end = (left_ips[i] + rand_x)
         right_end = (right_ips[i] + rand_x)
         peak_xrange = (np.arange(left_end, right_end, right_end - left_end))
         peak_height = peak_counts[i]
-        peak_center =  (peaks1[i] + rand_x)
+        peak_center =  (peaks[i] + rand_x)
         peak_width = ((right_end - left_end) * rand_w)
         just_peaks[left_ips[i]:right_ips[i]] = gaussian_peak(peak_xrange, peak_height, peak_center, peak_width)
     return(just_peaks)
@@ -58,12 +60,12 @@ def peak_inserter(Energy_bin, left_ips, right_ips, peaks1, width, data1_array, w
 
 # Name: Sir_Peaks_plotalot
 # Purpose : plots a line on the spectrum plot where the peak was identified
-# Creator : James Pittard - 28 / FEB / 2025
+# Creator : James Pittard - 29 / FEB / 2025
 # Function : sir_peaks_printsalot( the array for where peaks want to be identified, name of the plot where the peak lines will be displayed i.e plot1 )
 
 def sir_peaks_plotalot(plot_array, plot_name):
     plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 2.5e4)
-    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * np.array(plot_peaks)) - 12.5))+6
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * plot_peaks) - 12.5))+6
     for peak in plot_peaks_energy:
         plot_name.axvline(x = peak, color = 'red', alpha = 0.5)
     return(plot_peaks)
@@ -72,12 +74,12 @@ def sir_peaks_plotalot(plot_array, plot_name):
 # Name: Sir_Peaks_displayalot
 # Purpose : displays the energy of the peaks and their respective counts from greatest to largest count, and prints all of the peaks
 #           in order from the left to right side of the array
-# Creator : James Pittard - 28 / FEB / 2025
+# Creator : James Pittard - 29 / FEB / 2025
 # Function : sir_peaks_displayalot( the array for where peaks want to be identified, the name of the array must start with a " ' " and end with a " ' " )
 
 def sir_peaks_displayalot(plot_array, plot_name):
-    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 2.5e4) 
-    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * np.array(plot_peaks)) - 12.5))+6
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 2.5e4)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * plot_peaks) - 12.5))+6
     peak_counts = plot_array[plot_peaks]
     sorted_peaks = np.argsort(peak_counts)[::-1]
     print(f"Sorted Peaks For Plot '{plot_name}'")
@@ -89,19 +91,19 @@ def sir_peaks_displayalot(plot_array, plot_name):
         formatted_counts = f"{plot_array[peak_index]:<10.0f}"
         print(f"{formatted_peak_energy} | {formatted_counts}")
     print("-----------------------------")
+
     print(f"Peaks For Plot '{plot_name}'")
     print("Peak Energy (keV)")
-    for j in range(len(plot_peaks_energy)):
-        print(f"{plot_peaks_energy[j]:<0.3f}")
+    for energy in plot_peaks_energy:
+        print(f"{energy:<0.3f}")
     print("-----------------------------\n\n")
 
 
 # Name: plot_func
 # Purpose : plot a function
-# Creator : James Pittard - 28 / FEB / 2025
+# Creator : James Pittard - 29 / FEB / 2025
 # Function : plot_func( x axis data, y axis data, name of the x axis, name of the y axis, title of the plot,
 #                      units for the x axis, units for the y axis, color of the plot)
-
 
 def plot_func(x_axis_data, y_axis_data, x_axis_name, y_axis_name, title_name, x_axis_unit, y_axis_unit, color_type):
     spec_plot = pd.DataFrame({x_axis_name: x_axis_data, y_axis_name: y_axis_data})
@@ -112,6 +114,7 @@ def plot_func(x_axis_data, y_axis_data, x_axis_name, y_axis_name, title_name, x_
 
 
 # -------------- Pulls spectrum out of text file --------------#
+
 response = requests.get(github_url)
 
 data1 = response.text
@@ -126,16 +129,14 @@ Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
 raw_spec_plot = plot_func(Energy_bin, data1_array, 'Energy', 'Counts', 'Raw Spectrum', 'Energy (keV)', 'Counts', 'blue')
 peaks_raw_spec = sir_peaks_plotalot(data1_array, raw_spec_plot)
 
-
 #------------ rel_height is very important, can be fine tuned more--------#
 
 width, width_heights, left_ips, right_ips = scipy.peak_widths(data1_array, peaks_raw_spec, rel_height=0.046)
 
-
 #---------peak_remover and exponential fitter require cutting off the
 #         linear segment towards the beginning, done manually at the moment--------#
 
-y_smoothed = peak_remover(data1_array, peaks1, left_ips, right_ips)
+y_smoothed = peak_remover(data1_array, peaks_raw_spec, left_ips, right_ips)
 
 #--------------Smoothed Spectrum Plot----------------#
 
@@ -144,35 +145,32 @@ smooth_plot = plot_func(Energy_bin, y_smoothed, 'Energy', 'Counts', 'Spectrum Sm
 
 #-----------Exponential Fit Plot-----------#
 
-Energy_bin_fit = Energy_bin[peaks1[2]:-1]
-y_smoothed_fit = y_smoothed[peaks1[2]:-1]
+Energy_bin_fit = Energy_bin[peaks_raw_spec[2]: -1]
+y_smoothed_fit = y_smoothed[peaks_raw_spec[2]: -1]
 # b value estimated by looking at initial point and 400 point
-popt, pcov = scipyo.curve_fit(exponential_func, Energy_bin_fit, y_smoothed_fit, p0=((1.25*1000000),-0.0045814537,0), maxfev=100000000)
+popt, pcov = scipyo.curve_fit(exponential_func, Energy_bin_fit, y_smoothed_fit, p0=  ((1.25 * 1000000),-0.0045814537,0), maxfev = 100000000)
 
 plt.plot(Energy_bin_fit, exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2]), color='red')
 
-
 #--------------Linear + Exponential fit -------------#
+
 plt.figure(4)
 exp_part = exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2])
-lin_part = np.linspace(y_smoothed[0],y_smoothed[peaks1[1]], num=peaks1[1]+6)
+lin_part = np.linspace(y_smoothed[0],y_smoothed[peaks_raw_spec[1]], num = peaks_raw_spec[1]+6)
 model_true = np.concatenate((lin_part, exp_part))
 plt.figure(5)
 
-
 #-----------Adding peaks into simulation-----------------#
 
-just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks1, width, data1_array, width_heights)
+just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
 
 alone_peaks_plot = plot_func(Energy_bin, just_peaks, 'Energy', 'Counts', 'Just Peaks Plot', 'Energy (keV)', 'Counts', 'blue')
-
 
 #-----------Adding peaks to smoothed plot-----------------#
 
 model = np.maximum(just_peaks, model_true)
 
 Base_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Base Model', 'Energy (keV)', 'Counts', 'blue')
-
 
 # noise model needs some work prbably, Taking the avg of 10 models
 
@@ -183,10 +181,11 @@ for _ in range(10):
     added_sims = added_sims + model_noisy
 avg_sims = added_sims/10
 
-
 #-----------Plot of model smeared plot-----------------#
 
-Smeared_model_plot = plot_func(Energy_bin, model_noisy, 'Energy', 'Counts', 'Smeared Model', 'Energy (keV)', 'Counts', 'blue')
+smeared_model_plot = plot_func(Energy_bin, model_noisy, 'Energy', 'Counts', 'Smeared Model', 'Energy (keV)', 'Counts', 'blue')
+
+sir_peaks_plotalot(model_noisy, smeared_model_plot)
 
 #----------- Differece plot-----------------#
 
@@ -195,11 +194,8 @@ difference = (avg_sims - data1_array)
 
 Smeared_model_plot = plot_func(Energy_bin, difference, 'Energy', 'Counts', 'Difference Between Model and Actual Data', 'Energy (keV)', 'Counts', 'blue')
 
-
 #------- Finding Peaks in difference plot -------#
 
-sir_peaks_plotalot(model_noisy, plot6)
+#sir_peaks_displayalot(data1_array, 'Base Model')
 
-sir_peaks_printsalot(data1_array, 'Raw Spectrum')
-
-sir_peaks_printsalot(model_noisy, 'Smeared model')
+#sir_peaks_displayalot(model_noisy, 'Smeared model')
