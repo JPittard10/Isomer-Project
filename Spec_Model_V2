@@ -190,29 +190,30 @@ plt.show()
 
 #----------- Differece plot-----------------#
 
-# left linear side needs some work, but overall there are gaussians around peaks
-
 difference = (model_noisy - data1_array)
+avg_diff = np.mean(difference)
+std_diff = np.std(difference)
+std_diff_array = (difference - avg_diff) / std_diff
 
-Smeared_model_plot = plot_func(Energy_bin, difference, 'Energy', 'Counts', 'Difference Between Model and Actual Data', 'Energy (keV)', 'Counts', 'blue')
+Smeared_model_std_plot = plot_func(Energy_bin, std_diff_array, 'Energy', 'Standard Deviation', 'Difference Between Model and Actual Data', 'Energy (keV)', 'Standard Deviation (σ)', 'blue')
 plt.show()
 
 #-------------------- Difference Histogram ----------------#
 
-count_num = np.linspace( difference.min(), difference.max(), (len(Energy_bin)+1))
+count_num = np.linspace( std_diff_array.min(), std_diff_array.max(), (len(Energy_bin)+1))
 plt.figure(figsize=(8, 6))
-counts, bins, _ = plt.hist(difference, len(count_num))
+counts, bins, _ = plt.hist(std_diff_array, len(count_num))
 plt.xlabel("Distance from Centerline")
 plt.ylabel("Frequency")
 plt.title("Histogram of Distance from Centerline")
 
 bin_centers = 0.5 * (bins[:-1] + bins[1:])
-popt, pcov = optimize.curve_fit(gaussian, bin_centers, counts, p0=[max(difference),
-                                np.mean(difference), np.std(difference)])
+popt, pcov = optimize.curve_fit(gaussian, bin_centers, counts, p0=[max(counts),
+                                np.mean(bin_centers), np.std(bin_centers)])
 a, b, c = popt
-x_fit =  np.linspace( difference.max(), difference.min(), 100)
+x_fit =  np.linspace( std_diff_array.max(), std_diff_array.min(), 100)
 y_fit = gaussian(x_fit, *popt)
-plt.plot(x_fit, y_fit, 'r-', label=f'Fit: Amplitude={a:.2f}, Mean={b:.2f}, Std={c:.2f}')
+plt.plot(x_fit, y_fit, 'r-', label=f'Fit: Amplitude={a:.2f}, Mean={b:.2e}, Std={c:.2f}')
 plt.legend()
 plt.show()
 
