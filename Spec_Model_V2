@@ -1,4 +1,4 @@
-import random
+# import random
 import requests
 import numpy as np
 import pandas as pd
@@ -45,8 +45,8 @@ def peak_inserter(Energy_bin, left_ips, right_ips, peaks, width, data1_array, wi
     just_peaks = np.zeros(len(Energy_bin))
     peak_counts = data1_array[peaks]
     for i in range(len(peaks)):
-        rand_x = random.uniform(-5,5)
-        rand_w = np.random.normal(1.03, 0.01)
+        rand_x = random.uniform(-2,2)
+        rand_w = np.random.normal(1, 0.3)
         left_end = left_ips[i] + rand_x
         right_end = right_ips[i] + rand_x
         num_points = max(1, int(np.ceil(right_end - left_end)))
@@ -137,19 +137,19 @@ width, width_heights, left_ips, right_ips = scipy.peak_widths(data1_array, peaks
 #---------peak_remover and exponential fitter require cutting off the
 #         linear segment towards the beginning, done manually at the moment--------#
 
-y_smoothed = peak_remover(data1_array, peaks_raw_spec, left_ips, right_ips)
+smoothed = peak_remover(data1_array, peaks_raw_spec, left_ips, right_ips)
 
 #--------------Smoothed Spectrum Plot----------------#
 
-smooth_plot = plot_func(Energy_bin, y_smoothed, 'Energy', 'Counts', 'Spectrum Smoothed with Exponential Fit', 'Energy (keV)', 'Counts', 'blue')
+smooth_plot = plot_func(Energy_bin, smoothed, 'Energy', 'Counts', 'Spectrum Smoothed with Exponential Fit', 'Energy (keV)', 'Counts', 'blue')
 
 
 #-----------Exponential Fit Plot-----------#
 
 Energy_bin_fit = Energy_bin[peaks_raw_spec[2]: -1]
-y_smoothed_fit = y_smoothed[peaks_raw_spec[2]: -1]
+smoothed_fit = smoothed[peaks_raw_spec[2]: -1]
 # b value estimated by looking at initial point and 400 point
-popt, pcov = scipyo.curve_fit(exponential_func, Energy_bin_fit, y_smoothed_fit, p0=  ((1.25 * 1000000),-0.0045814537,0), maxfev = 100000000)
+popt, pcov = scipyo.curve_fit(exponential_func, Energy_bin_fit, smoothed_fit, p0=  ((1.25 * 1000000),-0.0045814537,0), maxfev = 100000000)
 
 plt.plot(Energy_bin_fit, exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2]), color='red')
 
@@ -157,7 +157,7 @@ plt.plot(Energy_bin_fit, exponential_func(Energy_bin_fit, popt[0], popt[1], popt
 
 plt.figure(4)
 exp_part = exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2])
-lin_part = np.linspace(y_smoothed[0],y_smoothed[peaks_raw_spec[1]], num = peaks_raw_spec[1]+6)
+lin_part = np.linspace(smoothed[0],smoothed[peaks_raw_spec[1]], num = peaks_raw_spec[1]+6)
 model_true = np.concatenate((lin_part, exp_part))
 plt.figure(5)
 
@@ -169,7 +169,7 @@ alone_peaks_plot = plot_func(Energy_bin, just_peaks, 'Energy', 'Counts', 'Just P
 
 #-----------Adding peaks to smoothed plot-----------------#
 
-model = np.maximum(just_peaks, model_true)
+model = np.maximum(just_peaks, smoothed)
 
 Base_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Base Model', 'Energy (keV)', 'Counts', 'blue')
 
@@ -184,13 +184,13 @@ avg_sims = added_sims/10
 
 #-----------Plot of model smeared plot-----------------#
 
-smeared_model_plot = plot_func(Energy_bin, model_noisy, 'Energy', 'Counts', 'Smeared Model', 'Energy (keV)', 'Counts', 'blue')
-sir_peaks_plotalot(model_noisy, smeared_model_plot)
+smeared_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Smeared Model', 'Energy (keV)', 'Counts', 'blue')
+sir_peaks_plotalot(model, smeared_model_plot)
 plt.show()
 
 #----------- Differece plot-----------------#
 
-difference = (model_noisy - data1_array)
+difference = (model - data1_array)
 avg_diff = np.mean(difference)
 std_diff = np.std(difference)
 std_diff_array = (difference - avg_diff) / std_diff
@@ -200,18 +200,32 @@ plt.show()
 
 #-------------------- Difference Histogram ----------------#
 
-count_num = np.linspace( std_diff_array.min(), std_diff_array.max(), (len(Energy_bin)+1))
+simulations = int(input("How many simulations?"))
+
+tot_std_diff_array = np.zeros(len(Energy_bin))
+
+for j in range(simulations):
+    just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
+    model = np.maximum(just_peaks, smoothed)
+    difference = (model - data1_array)
+    avg_diff = np.mean(difference)
+    std_diff = np.std(difference)
+    std_diff_array = (difference - avg_diff) / std_diff
+    count_num = np.linspace( std_diff_array.min(), std_diff_array.max(), (len(Energy_bin)+1))
+    counts, bins = np.histogram(std_diff_array, bins=count_num)
+    tot_std_diff_array += counts
+
 plt.figure(figsize=(8, 6))
-counts, bins, _ = plt.hist(std_diff_array, len(count_num))
+plt.hist(bins[:-1], bins, weights = tot_std_diff_array)
 plt.xlabel("Distance from Centerline")
 plt.ylabel("Frequency")
 plt.title("Histogram of Distance from Centerline")
 
 bin_centers = 0.5 * (bins[:-1] + bins[1:])
-popt, pcov = optimize.curve_fit(gaussian, bin_centers, counts, p0=[max(counts),
+popt, _ = optimize.curve_fit(gaussian, bin_centers, tot_std_diff_array, p0=[max(tot_std_diff_array),
                                 np.mean(bin_centers), np.std(bin_centers)])
 a, b, c = popt
-x_fit =  np.linspace( std_diff_array.max(), std_diff_array.min(), 100)
+x_fit =  np.linspace( std_diff_array.max(), std_diff_array.min(), len(Energy_bin))
 y_fit = gaussian(x_fit, *popt)
 plt.plot(x_fit, y_fit, 'r-', label=f'Fit: Amplitude={a:.2f}, Mean={b:.2e}, Std={c:.2f}')
 plt.legend()
