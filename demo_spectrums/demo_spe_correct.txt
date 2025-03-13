@@ -4094,9 +4094,3 @@
 546
 534
 512
-d
-d
-fa
-exit
-escape
-N
