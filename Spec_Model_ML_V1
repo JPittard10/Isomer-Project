@@ -1,0 +1,352 @@
+import requests
+import numpy as np
+import pandas as pd
+import scipy.signal as scipy
+import scipy.optimize as scipyo
+import matplotlib.pyplot as plt
+import scipy.optimize as optimize
+from numpy import random
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.tree import plot_tree
+
+
+# ----------------- FUNCTIONS ------------------#
+def linear_fill(x1,x2,y1,y2,width):
+    fill_x = np.linspace(x1, x2, num= width)
+    fill_y = np.linspace(y1, y2, num= width)
+    return(fill_y)
+
+
+def peak_remover(array_with_peaks, peaks, left_ips, right_ips):
+    temp_array = array_with_peaks.copy()
+    left_ips = np.int64(left_ips) - 1
+    right_ips = np.int64(right_ips) + 1
+    for i in range(len(peaks)):
+        ####### linear part includes first 2 peaks #########
+        if i > 1:
+            temp_array[left_ips[i]:right_ips[i]] = linear_fill(left_ips[i], right_ips[i], temp_array[left_ips[i]], temp_array[right_ips[i]], (right_ips[i]-left_ips[i]))
+    return(temp_array)
+
+
+def exponential_func(x, a, b, c):
+    return a * np.exp(b * x) + c
+
+
+def gaussian(x_range,height,center,width):
+    return( height * np.exp(-((x_range-center) ** 2)/(2 * width ** 2)))
+
+
+def peak_inserter(Energy_bin, left_ips, right_ips, peaks, width, data1_array, width_heights):
+    just_peaks = np.zeros(len(Energy_bin))
+    peak_counts = data1_array[peaks]
+    for i in range(len(peaks)):
+        rand_x = np.random.uniform(-2,2)
+        rand_w = np.random.normal(1, 0.3)
+        left_end = left_ips[i] + rand_x
+        right_end = right_ips[i] + rand_x
+        num_points = max(1, int(np.ceil(right_end - left_end)))
+        peak_xrange = np.linspace(left_end, right_end, num=num_points)       
+        peak_height = peak_counts[i]
+        peak_center = peaks[i] + rand_x
+        peak_width = (right_end - left_end) * rand_w
+        gaussian_values = gaussian(peak_xrange, peak_height, peak_center, peak_width)
+        int_indices = np.round(peak_xrange).astype(int)
+        np.add.at(just_peaks, int_indices, gaussian_values)
+    return just_peaks
+
+
+# Name: Sir_Peaks_plotalot
+# Purpose : plots a line on the spectrum plot where the peak was identified
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : sir_peaks_printsalot( the array for where peaks want to be identified, name of the plot where the peak lines will be displayed i.e plot1 )
+
+def sir_peaks_plotalot(plot_array, plot_name):
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 2.5e4)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * plot_peaks) - 12.5))+6
+    for peak in plot_peaks_energy:
+        plot_name.axvline(x = peak, color = 'red', alpha = 0.5)
+    return(plot_peaks)
+
+
+# Name: Sir_Peaks_displayalot
+# Purpose : displays the energy of the peaks and their respective counts from greatest to largest count, and prints all of the peaks
+#           in order from the left to right side of the array
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : sir_peaks_displayalot( the array for where peaks want to be identified, the name of the array must start with a " ' " and end with a " ' " )
+
+def sir_peaks_displayalot(plot_array, plot_name):
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 2.5e4)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * plot_peaks) - 12.5))+6
+    peak_counts = plot_array[plot_peaks]
+    sorted_peaks = np.argsort(peak_counts)[::-1]
+    print(f"Sorted Peaks For Plot '{plot_name}'")
+    print("Peak Energy (keV) | Counts")
+    print("-----------------------------")
+    for i in sorted_peaks:
+        peak_index = plot_peaks[i]
+        formatted_peak_energy = f"{plot_peaks_energy[i]:<17.3f}"
+        formatted_counts = f"{plot_array[peak_index]:<10.0f}"
+        print(f"{formatted_peak_energy} | {formatted_counts}")
+    print("-----------------------------")
+    print(f"Peaks For Plot '{plot_name}'")
+    print("Peak Energy (keV)")
+    for energy in plot_peaks_energy:
+        print(f"{energy:<0.3f}")
+    print("-----------------------------\n\n")
+
+
+# Name: plot_func
+# Purpose : plot a function
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : plot_func( x axis data, y axis data, name of the x axis, name of the y axis, title of the plot,
+#                      units for the x axis, units for the y axis, color of the plot)
+
+def plot_func(x_axis_data, y_axis_data, x_axis_name, y_axis_name, title_name, x_axis_unit, y_axis_unit, color_type):
+    spec_plot = pd.DataFrame({x_axis_name: x_axis_data, y_axis_name: y_axis_data})
+    plot = spec_plot.plot(x = x_axis_name, y = y_axis_name, title = title_name,
+                          xlabel = x_axis_unit, ylabel = y_axis_unit, color = color_type, figsize = (12,6))
+    return(plot)
+
+
+#----------- Opens Github Raw File -----------#
+
+github_url = "https://raw.githubusercontent.com/JPittard10/Isomer-Project/refs/heads/main/Trimmed%20and%20Bunched%20Spectrums/Calibration_feb_23_HPGE_134428sec_trimmed_bunched_240.txt"
+
+# -------------- Pulls spectrum out of text file --------------#E
+
+response = requests.get(github_url)
+
+data1 = response.text
+data1_array = np.array(list(map(int, data1.split())))
+
+bin_array = list(range(1,(len(data1_array)+1)))
+Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
+
+
+#----------- Plots Raw spectrum and peaks -----------#
+
+raw_spec_plot = plot_func(Energy_bin, data1_array, 'Energy', 'Counts', 'Raw Spectrum', 'Energy (keV)', 'Counts', 'blue')
+peaks_raw_spec = sir_peaks_plotalot(data1_array, raw_spec_plot)
+plt.show()
+
+#------------ rel_height is very important, can be fine tuned more--------#
+
+width, width_heights, left_ips, right_ips = scipy.peak_widths(data1_array, peaks_raw_spec, rel_height=0.046)
+
+#---------peak_remover and exponential fitter require cutting off the
+#         linear segment towards the beginning, done manually at the moment--------#
+
+smoothed = peak_remover(data1_array, peaks_raw_spec, left_ips, right_ips)
+
+#--------------Smoothed Spectrum Plot----------------#
+
+#smooth_plot = plot_func(Energy_bin, smoothed, 'Energy', 'Counts', 'Spectrum Smoothed with Exponential Fit', 'Energy (keV)', 'Counts', 'blue')
+
+
+#-----------Exponential Fit Plot-----------#
+
+Energy_bin_fit = Energy_bin[peaks_raw_spec[2]: -1]
+smoothed_fit = smoothed[peaks_raw_spec[2]: -1]
+# b value estimated by looking at initial point and 400 point
+popt, pcov = scipyo.curve_fit(exponential_func, Energy_bin_fit, smoothed_fit, p0=  ((1.25 * 1000000),-0.0045814537,0), maxfev = 100000000)
+
+#plt.plot(Energy_bin_fit, exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2]), color='red')
+
+#--------------Linear + Exponential fit -------------#
+
+plt.figure(4)
+exp_part = exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2])
+lin_part = np.linspace(smoothed[0],smoothed[peaks_raw_spec[1]], num = peaks_raw_spec[1]+6)
+model_true = np.concatenate((lin_part, exp_part))
+plt.figure(5)
+
+#-----------Adding peaks into simulation-----------------#
+
+just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
+
+#alone_peaks_plot = plot_func(Energy_bin, just_peaks, 'Energy', 'Counts', 'Just Peaks Plot', 'Energy (keV)', 'Counts', 'blue')
+
+#-----------Adding peaks to smoothed plot-----------------#
+
+model = np.maximum(just_peaks, smoothed)
+
+#Base_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Base Model', 'Energy (keV)', 'Counts', 'blue')
+
+# noise model needs some work prbably, Taking the avg of 10 models
+
+added_sims = np.zeros(len(model))
+for _ in range(10):
+    noise = np.random.normal(loc=0, scale = 0.032, size= len(model_true))
+    model_noisy = model * (1+ noise)
+    added_sims = added_sims + model_noisy
+avg_sims = added_sims/10
+
+#-----------Plot of model smeared plot-----------------#
+
+toy_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Toy Model', 'Energy (keV)', 'Counts', 'blue')
+toy_peaks = sir_peaks_plotalot(model, toy_model_plot)
+plt.show()
+
+#----------- Differece plot-----------------#
+
+difference = (model - data1_array)
+avg_diff = np.mean(difference)
+std_diff = np.std(difference)
+std_diff_array = (difference - avg_diff) / std_diff
+
+#Smeared_model_std_plot = plot_func(Energy_bin, std_diff_array, 'Energy', 'Standard Deviation', 'Difference Between Model and Actual Data', 'Energy (keV)', 'Standard Deviation (σ)', 'blue')
+plt.show()
+
+#-------------------- Difference Histogram ----------------#
+"""
+simulations = int(input("How many simulations?"))
+
+tot_std_diff_array = np.zeros(len(Energy_bin))
+
+for j in range(simulations):
+    just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
+    model = np.maximum(just_peaks, smoothed)
+    difference = (model - data1_array)
+    avg_diff = np.mean(difference)
+    std_diff = np.std(difference)
+    std_diff_array = (difference - avg_diff) / std_diff
+    count_num = np.linspace( std_diff_array.min(), std_diff_array.max(), (len(Energy_bin)+1))
+    counts, bins = np.histogram(std_diff_array, bins=count_num)
+    tot_std_diff_array += counts
+
+plt.figure(figsize=(8, 6))
+plt.hist(bins[:-1], bins, weights = tot_std_diff_array)
+plt.xlabel("Distance from Centerline")
+plt.ylabel("Frequency")
+plt.title("Histogram of Distance from Centerline")
+
+bin_centers = 0.5 * (bins[:-1] + bins[1:])
+popt, _ = optimize.curve_fit(gaussian, bin_centers, tot_std_diff_array, p0=[max(tot_std_diff_array),
+                                np.mean(bin_centers), np.std(bin_centers)])
+a, b, c = popt
+x_fit =  np.linspace( std_diff_array.max(), std_diff_array.min(), len(Energy_bin))
+y_fit = gaussian(x_fit, *popt)
+plt.plot(x_fit, y_fit, 'r-', label=f'Fit: Amplitude={a:.2f}, Mean={b:.2e}, Std={c:.2f}')
+plt.legend()
+plt.show()
+"""
+#------- Finding Peaks in difference plot -------#
+
+#sir_peaks_displayalot(data1_array, 'Base Model')
+
+#sir_peaks_displayalot(model_noisy, 'Smeared model')
+
+#----------- Toy Peak Orginization -----------#
+
+peak_counts = data1_array[peaks_raw_spec]
+toy_peak_energy = (0.64844 + 0.27383 * np.array((25 * np.array(peaks_raw_spec)) - 12.5))+6
+
+print("Correctly Ordered Toy Peaks:")
+i=0
+for i in range(len(peak_counts)-1):
+    if peak_counts[i+1] < peak_counts[i]:
+        ordered_peaks = toy_peak_energy[i]
+        print(f"{ordered_peaks:.3f}")
+    else:
+        print("--------")
+    i += 1
+print("-----------------------------")
+
+"""
+
+j = 0
+n = 0
+toy_peak_dist_list = []
+toy_peak_height_diff_list = []
+while j < (len(toy_peaks) - 1):
+    n = j + 1
+    #print(toy_peak_energy[j],"\n")
+    while n < (len(toy_peaks) - 1):
+        toy_peak_dist = toy_peak_energy[n] - toy_peak_energy[j]
+        #print(f"{toy_peak_dist:0.3f}")
+        toy_peak_dist_list.append(toy_peak_dist)
+        toy_peak_height_diff = toy_peak_counts[n] - toy_peak_counts[j]
+        #print(f"{toy_peak_height_diff:0.3f}")
+        toy_peak_height_diff_list.append(toy_peak_height_diff)
+        n += 1
+    j += 1
+
+a = 0
+b = 0
+allowed_error = 1.3
+
+while a < (len(np.array(toy_peak_dist_list)) - 1):
+    b = a + 1
+    while b < (len(np.array(toy_peak_dist_list)) - 1):
+        has_recurring_dis = 0
+        has_recurring_diff_hight = 0
+        if ((np.array(toy_peak_dist_list[b])) <= ((np.array(toy_peak_dist_list[a])) * allowed_error))  and ((np.array(toy_peak_dist_list[b])) >= ((np.array(toy_peak_dist_list[a])) / allowed_error)):
+            
+            #print(f"Peak {(a):>3d}   and Peak {a+1:>3d}   are the same distance apart as Peak {(b):>3d} and Peak {(b+1):>3d}  the distances are"
+            #f"{(np.array(toy_peak_dist_list[a])):>8.3f}    and    {(np.array(toy_peak_dist_list[b])):>8.3f}")
+            
+            has_recurring_dis = 1
+            
+        if ((np.array(toy_peak_height_diff_list[b])) <= ((np.array(toy_peak_height_diff_list[a])) * allowed_error))  and ((np.array(toy_peak_height_diff_list[b])) >= ((np.array(toy_peak_height_diff_list[a])) / allowed_error)):
+            
+            #print(f"Peak {(a):>3d}   and Peak {a+1:>3d}   are the same difference in height as Peak {(b):>3d} and Peak {(b+1):>3d}  the difference is"
+            #f" {(np.array(toy_peak_height_diff_list[a])):>8.3f}    and    {(np.array(toy_peak_height_diff_list[b])):>8.3f}")
+            
+            has_recurring_diff_hight = 1
+            
+        if has_recurring_dis and has_recurring_diff_hight:
+            print(f"Peak {(a):>3d}   and Peak {a+1:>3d}   have the same differnece in height and distance as {(b):>3d} and Peak {(b+1):>3d}  the distances are"
+            f"{(np.array(toy_peak_dist_list[a])):>8.3f}    and    {(np.array(toy_peak_dist_list[b])):>8.3f} and the difference in heights are "
+            f"{(np.array(toy_peak_height_diff_list[a])):>8.3f}    and    {(np.array(toy_peak_height_diff_list[b])):>8.3f}")
+            
+        b += 1
+    a += 1
+"""
+
+#----------- ML -----------#
+simulations = int(input("How many simulations?"))
+
+toy_peak_counts_tot_sim = []
+toy_peak_energy_tot_sim = []
+for j in range(simulations):
+    just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
+    model = np.maximum(just_peaks, smoothed)
+    toy_peaks = sir_peaks_plotalot(model, toy_model_plot)
+    toy_peak_counts = model[toy_peaks]
+    toy_peak_energy = (0.64844 + 0.27383 * np.array((25 * np.array(toy_peaks)) - 12.5))+6
+    toy_peak_counts_tot_sim.append(toy_peak_counts)
+    toy_peak_energy_tot_sim.append(toy_peak_energy)
+
+
+
+features = np.column_stack((toy_peak_energy , toy_peak_counts))
+
+ordered_peaks = []
+for i in range(len(toy_peak_counts) - 1):
+    if toy_peak_counts[i] > toy_peak_counts[i + 1]:
+        ordered_peaks.append(1)  
+    else:
+        ordered_peaks.append(0)
+
+features = np.array(features)
+ordered_peaks.append(0)  
+ordered_peaks = np.array(ordered_peaks)
+
+x_train,x_test, y_train, y_test = train_test_split(features, ordered_peaks, test_size = 0.7, random_state = np.random.randint(1000000000))
+
+GBDT = GradientBoostingClassifier(n_estimators = 100, learning_rate = 0.1, max_depth = 3, random_state = np.random.randint(1000000000)).fit(x_train, y_train)
+
+predictions = GBDT.predict(x_test)
+
+print("Predictions for Peak Order:\n")
+for i, pred in enumerate(predictions):
+    print(f"Peak {i+1} (Energy: {x_test[i][0]:8.3f} keV, Count: {x_test[i][1]:7.0f} ) -> Order Prediction: {pred}")
+
+
+tree_index = 0
+tree = GBDT.estimators_[tree_index, 0]
+plt.figure(figsize=(12,8))
+plot_tree(tree, filled=True, feature_names=["Energy", "Counts"], class_names=["Before", "After"], rounded=True)
+plt.title(f"Decision Tree {tree_index + 1}: Peak Order Prediction")
+plt.show()
