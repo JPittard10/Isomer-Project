@@ -1,4 +1,4 @@
-# import random
+import random
 import requests
 import numpy as np
 import pandas as pd
@@ -67,7 +67,7 @@ def peak_inserter(Energy_bin, left_ips, right_ips, peaks, width, data1_array, wi
 
 def sir_peaks_plotalot(plot_array, plot_name):
     plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 2.5e4)
-    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * plot_peaks) - 12.5))+6
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (plot_peaks + 1))))
     for peak in plot_peaks_energy:
         plot_name.axvline(x = peak, color = 'red', alpha = 0.5)
     return(plot_peaks)
@@ -81,7 +81,7 @@ def sir_peaks_plotalot(plot_array, plot_name):
 
 def sir_peaks_displayalot(plot_array, plot_name):
     plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 2.5e4)
-    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * plot_peaks) - 12.5))+6
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (plot_peaks + 1))))
     peak_counts = plot_array[plot_peaks]
     sorted_peaks = np.argsort(peak_counts)[::-1]
     print(f"Sorted Peaks For Plot '{plot_name}'")
@@ -121,7 +121,7 @@ data1 = response.text
 data1_array = np.array(list(map(int, data1.split())))
 
 bin_array = list(range(1,(len(data1_array)+1)))
-Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)) - 12.5)
+Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)))
 
 
 #----------- Plots Raw spectrum and peaks -----------#
