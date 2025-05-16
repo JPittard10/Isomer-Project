@@ -73,8 +73,8 @@ def peak_inserter(Energy_bin, left_ips, right_ips, peaks, width, data1_array, wi
 # Function : sir_peaks_printsalot( the array for where peaks want to be identified, name of the plot where the peak lines will be displayed i.e plot1 )
 
 def sir_peaks_plotalot(plot_array, plot_name):
-    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e3)
-    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (plot_peaks + 1))))
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e2)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array(((plot_peaks + 1))))
     for peak in plot_peaks_energy:
         plot_name.axvline(x = peak, color = 'red', alpha = 0.5)
     return(plot_peaks)
@@ -87,8 +87,8 @@ def sir_peaks_plotalot(plot_array, plot_name):
 # Function : sir_peaks_displayalot( the array for where peaks want to be identified, the name of the array must start with a " ' " and end with a " ' " )
 
 def sir_peaks_displayalot(plot_array, plot_name):
-    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e3)
-    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (plot_peaks + 1))))
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e2)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array(((plot_peaks + 1))))
     peak_counts = plot_array[plot_peaks]
     sorted_peaks = np.argsort(peak_counts)[::-1]
     print(f"Sorted Peaks For Plot '{plot_name}'")
@@ -128,7 +128,7 @@ def plot_func(x_axis_data, y_axis_data, x_axis_name, y_axis_name, title_name, x_
 def create_ladder_features(known_levels, spectrum_length):
     features = np.zeros(spectrum_length)
     for energy in known_levels:
-        bin_idx = int(((energy - 0.64844) / 0.27383) / 25)
+        bin_idx = int(((energy - 0.64844) / 0.27383))
         if bin_idx < spectrum_length:
             features[bin_idx] = 1
     return features
@@ -146,9 +146,11 @@ def Create_CNN_model(input_shape, output_shape):
         MaxPooling1D(pool_size=2),
         Conv1D(64, kernel_size=3, activation='relu'),
         MaxPooling1D(pool_size=2),
-        LSTM(64, return_sequences = True),
+        Conv1D(128, kernel_size=3, activation='relu'),
+        MaxPooling1D(pool_size=2),
+        LSTM(128, return_sequences = True),
         Flatten(),
-        Dense(128, activation='relu'),
+        Dense(256, activation='relu'),
         Dropout(0.3),
         Dense(output_shape, activation='sigmoid') 
     ])
@@ -158,7 +160,7 @@ def Create_CNN_model(input_shape, output_shape):
 
 #----------- Opens Github Raw File -----------#
 
-github_url = "https://raw.githubusercontent.com/JPittard10/Isomer-Project/refs/heads/main/Trimmed%20and%20Bunched%20Spectrums/A1_Cl37_c10_HPGe_301sec_trimmed_bunched_240.txt"
+github_url = "https://raw.githubusercontent.com/JPittard10/Isomer-Project/refs/heads/main/Trimmed%20and%20Bunched%20Spectrums/A1_Cl37_c10_HPGe_301sec_trimmed.txt"
 
 # -------------- Pulls spectrum out of text file --------------#E
 
@@ -168,7 +170,7 @@ data1 = response.text
 data1_array = np.array(list(map(int, data1.split())))
 
 bin_array = list(range(1,(len(data1_array)+1)))
-Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)))
+Energy_bin = 0.64844 + 0.27383 * np.array((np.array(bin_array)))
 
 
 #----------- Plots Raw spectrum and peaks -----------#
@@ -216,7 +218,13 @@ just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, widt
 
 #-----------Adding peaks to smoothed plot-----------------#
 
-model = np.maximum(just_peaks, smoothed)
+CorrectedGap = len(smoothed) - len(just_peaks)
+CorrectedLengthJustPeaks = np.pad(just_peaks, (0, CorrectedGap), 'constant')
+
+CorrectedModelGap = len(smoothed) - len(model_true)
+CorrectedLengthModelTrue = np.pad(model_true, (0, CorrectedModelGap), 'constant')
+
+model = np.maximum(CorrectedLengthJustPeaks, smoothed)
 
 #Base_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Base Model', 'Energy (keV)', 'Counts', 'blue')
 
@@ -224,9 +232,9 @@ model = np.maximum(just_peaks, smoothed)
 
 added_sims = np.zeros(len(model))
 for _ in range(10):
-    noise = np.random.normal(loc=0, scale = 0.032, size= len(model_true))
+    noise = np.random.normal(loc=0, scale = 0.032, size= len(CorrectedLengthModelTrue))
     model_noisy = model * (1+ noise)
-    added_sims = added_sims + model_noisy
+    added_sims = added_sims + CorrectedLengthModelTrue
 avg_sims = added_sims/10
 
 #-----------Plot of model smeared plot-----------------#
@@ -239,18 +247,18 @@ plt.show()
 
 def MatchingLadderToPeaks(PeakIndices, KnownLadder, Tolerance):
     Labels = np.zeros(len(data1_array))
-    PeakEnergies = (0.64833 + 0.27383 * (25 * np.array(PeakIndices)))
+    PeakEnergies = (0.64833 + 0.27383 * (np.array(PeakIndices)))
     for level_energy in KnownLadder:
         if np.any(np.abs(PeakEnergies - level_energy) <= Tolerance):
-            bin_idx = int(((level_energy - 0.64844) / 0.27383) / 25)
+            bin_idx = int(((level_energy - 0.64844) / 0.27383))
             if bin_idx < len(Labels):
                 Labels[bin_idx] = 1
     return Labels
 
-ML_model_path = 'CNN_model_testing_V4.26.keras'
+ML_model_path = 'CNN_model_testing_V5.4.keras'
 input_shape = (len(data1_array), 1)
 
-KnownLadder = [1095.97,  1123.35, 1150.73]
+KnownLadder = [1093.23, 1120.61, 1157.30]
 
 if os.path.exists(ML_model_path):
     CNN = keras.models.load_model(ML_model_path)
@@ -269,10 +277,12 @@ MlTrainSpecWithPeaks = []
 
 for j in track(range(simulations), description="Creating Toy Models"):
     just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
-    model = np.maximum(just_peaks, smoothed)
+    CorrectedGap = len(smoothed) - len(just_peaks)
+    CorrectedLengthJustPeaks = np.pad(just_peaks, (0, CorrectedGap), 'constant')
+    model = np.maximum(CorrectedLengthJustPeaks, smoothed)
     spectrum_list.append(model)
-    MlTrainModelPeaks, _ = scipy.find_peaks(model, prominence = 1e3)
-    MlTrainPeaksEnergy = (0.64844 + 0.27383 * np.array((25 * (MlTrainModelPeaks))))
+    MlTrainModelPeaks, _ = scipy.find_peaks(model, prominence = 1e2)
+    MlTrainPeaksEnergy = (0.64844 + 0.27383 * np.array(((MlTrainModelPeaks))))
     MlTrainSpecWithPeaks = np.zeros(len(data1_array))
     MlTrainSpecWithPeaks[MlTrainModelPeaks] = 1.0
     MlTrainLabels = MatchingLadderToPeaks(MlTrainModelPeaks, KnownLadder, 10.0)
@@ -324,7 +334,7 @@ plt.show()
 # ---- Predicting the Peak on the Spec---- #
 analyze_spec = data1_array.reshape(1, -1, 1)
 peak_probabilities = CNN.predict(analyze_spec, batch_size = 1)
-peak_location_decider = (peak_probabilities > (np.mean(peak_probabilities) - (0.1 * np.std(peak_probabilities)))).astype(int)
+peak_location_decider = (peak_probabilities > (np.mean(peak_probabilities) + (0.125 * np.std(peak_probabilities)))).astype(int)
 peak_indices = np.where(peak_location_decider == 1)[1]
 
 print(peak_probabilities)
@@ -347,7 +357,7 @@ plt.ylabel("Intensity")
 plt.show()
 
 
-check_peaks, _ = scipy.find_peaks(data1_array, prominence = 1e3)
-check_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (check_peaks + 1))))
+check_peaks, _ = scipy.find_peaks(data1_array, prominence = 1e2)
+check_peaks_energy = (0.64844 + 0.27383 * np.array(((check_peaks + 1))))
 
 print(check_peaks,"\n\n",check_peaks_energy)
