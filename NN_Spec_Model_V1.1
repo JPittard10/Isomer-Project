@@ -1,0 +1,353 @@
+import requests
+import os
+import numpy as np
+import pandas as pd
+import scipy.signal as scipy
+import scipy.optimize as scipyo
+import matplotlib.pyplot as plt
+import scipy.optimize as optimize
+import tensorflow as tf
+from numpy import random
+from sklearn.ensemble import GradientBoostingClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.tree import plot_tree
+from sklearn.metrics import log_loss
+from sklearn.metrics import accuracy_score
+from sklearn.neural_network import MLPClassifier
+from sklearn.datasets import make_classification
+from sklearn.metrics import classification_report
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from tensorflow import keras
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout, Input, LSTM
+from rich.progress import track
+
+# ----------------- FUNCTIONS ------------------#
+def linear_fill(x1,x2,y1,y2,width):
+    fill_x = np.linspace(x1, x2, num= width)
+    fill_y = np.linspace(y1, y2, num= width)
+    return(fill_y)
+
+
+def peak_remover(array_with_peaks, peaks, left_ips, right_ips):
+    temp_array = array_with_peaks.copy()
+    left_ips = np.int64(left_ips) - 1
+    right_ips = np.int64(right_ips) + 1
+    for i in range(len(peaks)):
+        ####### linear part includes first 2 peaks #########
+        if i > 1:
+            temp_array[left_ips[i]:right_ips[i]] = linear_fill(left_ips[i], right_ips[i], temp_array[left_ips[i]], temp_array[right_ips[i]], (right_ips[i]-left_ips[i]))
+    return(temp_array)
+
+
+def exponential_func(x, a, b, c):
+    return a * np.exp(b * x) + c
+
+
+def gaussian(x_range,height,center,width):
+    return( height * np.exp(-((x_range-center) ** 2)/(2 * width ** 2)))
+
+
+def peak_inserter(Energy_bin, left_ips, right_ips, peaks, width, data1_array, width_heights):
+    just_peaks = np.zeros(len(Energy_bin))
+    peak_counts = data1_array[peaks]
+    for i in range(len(peaks)):
+        rand_x = np.random.uniform(-2,2)
+        rand_w = np.random.normal(1, 0.3)
+        left_end = left_ips[i] + rand_x
+        right_end = right_ips[i] + rand_x
+        num_points = max(1, int(np.ceil(right_end - left_end)))
+        peak_xrange = np.linspace(left_end, right_end, num=num_points)       
+        peak_height = peak_counts[i]
+        peak_center = peaks[i] + rand_x
+        peak_width = (right_end - left_end) * rand_w
+        gaussian_values = gaussian(peak_xrange, peak_height, peak_center, peak_width)
+        int_indices = np.round(peak_xrange).astype(int)
+        np.add.at(just_peaks, int_indices, gaussian_values)
+    return just_peaks
+
+
+# Name: Sir_Peaks_plotalot
+# Purpose : plots a line on the spectrum plot where the peak was identified
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : sir_peaks_printsalot( the array for where peaks want to be identified, name of the plot where the peak lines will be displayed i.e plot1 )
+
+def sir_peaks_plotalot(plot_array, plot_name):
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e3)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (plot_peaks + 1))))
+    for peak in plot_peaks_energy:
+        plot_name.axvline(x = peak, color = 'red', alpha = 0.5)
+    return(plot_peaks)
+
+
+# Name: Sir_Peaks_displayalot
+# Purpose : displays the energy of the peaks and their respective counts from greatest to largest count, and prints all of the peaks
+#           in order from the left to right side of the array
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : sir_peaks_displayalot( the array for where peaks want to be identified, the name of the array must start with a " ' " and end with a " ' " )
+
+def sir_peaks_displayalot(plot_array, plot_name):
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e3)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (plot_peaks + 1))))
+    peak_counts = plot_array[plot_peaks]
+    sorted_peaks = np.argsort(peak_counts)[::-1]
+    print(f"Sorted Peaks For Plot '{plot_name}'")
+    print("Peak Energy (keV) | Counts")
+    print("-----------------------------")
+    for i in sorted_peaks:
+        peak_index = plot_peaks[i]
+        formatted_peak_energy = f"{plot_peaks_energy[i]:<17.3f}"
+        formatted_counts = f"{plot_array[peak_index]:<10.0f}"
+        print(f"{formatted_peak_energy} | {formatted_counts}")
+    print("-----------------------------")
+    print(f"Peaks For Plot '{plot_name}'")
+    print("Peak Energy (keV)")
+    for energy in plot_peaks_energy:
+        print(f"{energy:<0.3f}")
+    print("-----------------------------\n\n")
+
+
+# Name: plot_func
+# Purpose : plot a function
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : plot_func( x axis data, y axis data, name of the x axis, name of the y axis, title of the plot,
+#                      units for the x axis, units for the y axis, color of the plot)
+
+def plot_func(x_axis_data, y_axis_data, x_axis_name, y_axis_name, title_name, x_axis_unit, y_axis_unit, color_type):
+    spec_plot = pd.DataFrame({x_axis_name: x_axis_data, y_axis_name: y_axis_data})
+    plot = spec_plot.plot(x = x_axis_name, y = y_axis_name, title = title_name,
+                          xlabel = x_axis_unit, ylabel = y_axis_unit, color = color_type, figsize = (12,6))
+    return(plot)
+
+
+# Name: create_ladder_features
+# Purpose : take the known energy levels of a element to train the ML with
+# Creator : James Pittard - 26 / APR / 2025
+# Function : create_ladder_features( array of known energy levels, length of spectrums being used i.e. 240, 4096, ect. )
+
+def create_ladder_features(known_levels, spectrum_length):
+    features = np.zeros(spectrum_length)
+    for energy in known_levels:
+        bin_idx = int(((energy - 0.64844) / 0.27383) / 25)
+        if bin_idx < spectrum_length:
+            features[bin_idx] = 1
+    return features
+
+
+# Name: Create_CNN_model
+# Purpose : the CNN model
+# Creator : James Pittard - 26 / APR / 2025
+# Function : create_ladder_features( length of spectrum in the x and 1 in the y, length of spectrum i.e. 240, 4096, ect.)
+
+def Create_CNN_model(input_shape, output_shape):
+    CNN = Sequential([
+        Input(shape=input_shape),
+        Conv1D(32, kernel_size=5, activation='relu'),
+        MaxPooling1D(pool_size=2),
+        Conv1D(64, kernel_size=3, activation='relu'),
+        MaxPooling1D(pool_size=2),
+        LSTM(64, return_sequences = True),
+        Flatten(),
+        Dense(128, activation='relu'),
+        Dropout(0.3),
+        Dense(output_shape, activation='sigmoid') 
+    ])
+    CNN.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    return CNN
+
+
+#----------- Opens Github Raw File -----------#
+
+github_url = "https://raw.githubusercontent.com/JPittard10/Isomer-Project/refs/heads/main/Trimmed%20and%20Bunched%20Spectrums/A1_Cl37_c10_HPGe_301sec_trimmed_bunched_240.txt"
+
+# -------------- Pulls spectrum out of text file --------------#E
+
+response = requests.get(github_url)
+
+data1 = response.text
+data1_array = np.array(list(map(int, data1.split())))
+
+bin_array = list(range(1,(len(data1_array)+1)))
+Energy_bin = 0.64844 + 0.27383 * np.array((25 * np.array(bin_array)))
+
+
+#----------- Plots Raw spectrum and peaks -----------#
+
+raw_spec_plot = plot_func(Energy_bin, data1_array, 'Energy', 'Counts', 'Raw Spectrum', 'Energy (keV)', 'Counts', 'blue')
+peaks_raw_spec = sir_peaks_plotalot(data1_array, raw_spec_plot)
+plt.show()
+
+#------------ rel_height is very important, can be fine tuned more--------#
+
+width, width_heights, left_ips, right_ips = scipy.peak_widths(data1_array, peaks_raw_spec, rel_height=0.046)
+
+#---------peak_remover and exponential fitter require cutting off the
+#         linear segment towards the beginning, done manually at the moment--------#
+
+smoothed = peak_remover(data1_array, peaks_raw_spec, left_ips, right_ips)
+#--------------Smoothed Spectrum Plot----------------#
+
+#smooth_plot = plot_func(Energy_bin, smoothed, 'Energy', 'Counts', 'Spectrum Smoothed with Exponential Fit', 'Energy (keV)', 'Counts', 'blue')
+
+
+#-----------Exponential Fit Plot-----------#
+
+Energy_bin_fit = Energy_bin[peaks_raw_spec[2]: -1]
+smoothed_fit = smoothed[peaks_raw_spec[2]: -1]
+# b value estimated by looking at initial point and 400 point
+popt, pcov = scipyo.curve_fit(exponential_func, Energy_bin_fit, smoothed_fit, p0=  ((1.25 * 1000000),-0.0045814537,0), maxfev = 100000000)
+
+#plt.plot(Energy_bin_fit, exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2]), color='red')
+
+#--------------Linear + Exponential fit -------------#
+
+plt.figure(4)
+exp_part = exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2])
+lin_part = np.linspace(smoothed[0],smoothed[peaks_raw_spec[1]], num = peaks_raw_spec[1]+12)
+model_true = np.concatenate((lin_part, exp_part))
+plt.figure(5)
+
+#-----------Adding peaks into simulation-----------------#
+
+
+just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
+
+#alone_peaks_plot = plot_func(Energy_bin, just_peaks, 'Energy', 'Counts', 'Just Peaks Plot', 'Energy (keV)', 'Counts', 'blue')
+
+#-----------Adding peaks to smoothed plot-----------------#
+
+model = np.maximum(just_peaks, smoothed)
+
+#Base_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Base Model', 'Energy (keV)', 'Counts', 'blue')
+
+# noise model needs some work prbably, Taking the avg of 10 models
+
+added_sims = np.zeros(len(model))
+for _ in range(10):
+    noise = np.random.normal(loc=0, scale = 0.032, size= len(model_true))
+    model_noisy = model * (1+ noise)
+    added_sims = added_sims + model_noisy
+avg_sims = added_sims/10
+
+#-----------Plot of model smeared plot-----------------#
+
+toy_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Toy Model', 'Energy (keV)', 'Counts', 'blue')
+toy_peaks = sir_peaks_plotalot(model, toy_model_plot)
+plt.show()
+
+#----------- ML -----------#
+
+def MatchingLadderToPeaks(PeakIndices, KnownLadder, Tolerance):
+    Labels = np.zeros(len(data1_array))
+    PeakEnergies = (0.64833 + 0.27383 * (25 * np.array(PeakIndices)))
+    for level_energy in KnownLadder:
+        if np.any(np.abs(PeakEnergies - level_energy) <= Tolerance):
+            bin_idx = int(((level_energy - 0.64844) / 0.27383) / 25)
+            if bin_idx < len(Labels):
+                Labels[bin_idx] = 1
+    return Labels
+
+ML_model_path = 'CNN_model_testing_V4.26.keras'
+input_shape = (len(data1_array), 1)
+
+KnownLadder = [1095.97,  1123.35, 1150.73]
+
+if os.path.exists(ML_model_path):
+    CNN = keras.models.load_model(ML_model_path)
+    print(f"Loaded model: {ML_model_path}")
+else:
+    placeholder_output_shape = len(data1_array)
+    CNN = Create_CNN_model(input_shape, placeholder_output_shape)
+    print(f"Created New model: {ML_model_path}")
+
+
+simulations = int(input("How many simulations: "))
+
+spectrum_list = []
+MlTrainModelPeaksList = []
+MlTrainSpecWithPeaks = []
+
+for j in track(range(simulations), description="Creating Toy Models"):
+    just_peaks = peak_inserter(model_true, left_ips, right_ips, peaks_raw_spec, width, data1_array, width_heights)
+    model = np.maximum(just_peaks, smoothed)
+    spectrum_list.append(model)
+    MlTrainModelPeaks, _ = scipy.find_peaks(model, prominence = 1e3)
+    MlTrainPeaksEnergy = (0.64844 + 0.27383 * np.array((25 * (MlTrainModelPeaks))))
+    MlTrainSpecWithPeaks = np.zeros(len(data1_array))
+    MlTrainSpecWithPeaks[MlTrainModelPeaks] = 1.0
+    MlTrainLabels = MatchingLadderToPeaks(MlTrainModelPeaks, KnownLadder, 10.0)
+    MlTrainModelPeaksList.append(MlTrainLabels)
+
+ 
+# Feature Creation
+
+FeaturesMlInput = np.array(MlTrainModelPeaksList)
+
+# Split into training and test
+x_train, x_test, y_train, y_test = train_test_split(np.array(spectrum_list), FeaturesMlInput,
+                                                    test_size=0.5, random_state=2112)
+x_train = x_train.reshape((-1, len(data1_array), 1))
+x_test = x_test.reshape((-1, len(data1_array), 1))
+
+history = CNN.fit(x_train, y_train, epochs=20, batch_size=8, validation_data=(x_test, y_test))
+
+CNN.save(ML_model_path)
+
+# Predict on ML test
+y_pred_probs = CNN.predict(x_test, batch_size = 1)
+YPredThreshold = 0.5
+y_pred = (y_pred_probs > YPredThreshold).astype(int)
+
+Confuse_Matrix = confusion_matrix(y_test.flatten(), y_pred.flatten())
+ConfusionMatrixDisplay(confusion_matrix=Confuse_Matrix).plot(cmap='Blues')
+plt.title("CNN Confusion Matrix")
+plt.show()
+
+# Plot loss
+plt.plot(history.history['loss'], label='Train Loss')
+plt.plot(history.history['val_loss'], label='Val Loss')
+plt.title("CNN Training Loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss")
+plt.legend()
+plt.show()
+
+# Plot Accuracy
+plt.plot(history.history['accuracy'], label='Train Accuracy')
+plt.plot(history.history['val_accuracy'], label='Val Accuracy')
+plt.title("CNN Training Accuracy")
+plt.xlabel("Epochs")
+plt.ylabel("Accuracy")
+plt.legend()
+plt.show()
+
+# ---- Predicting the Peak on the Spec---- #
+analyze_spec = data1_array.reshape(1, -1, 1)
+peak_probabilities = CNN.predict(analyze_spec, batch_size = 1)
+peak_location_decider = (peak_probabilities > (np.mean(peak_probabilities) - (0.1 * np.std(peak_probabilities)))).astype(int)
+peak_indices = np.where(peak_location_decider == 1)[1]
+
+print(peak_probabilities)
+print(peak_location_decider)
+print(peak_indices)
+
+i = 0
+for i in (peak_indices - 1):
+    print(f"Peak at energy {Energy_bin[i]}")
+
+spectrum_series = pd.Series(data1_array.flatten(), name="Spectrum")
+plt.figure(figsize = (12,6))
+spectrum_series.plot(label="Spectrum with predicted peaks", color='blue')
+for peak_index in peak_indices:
+    plt.axvline(x = (peak_index - 1), color = 'red', alpha = 0.5)
+plt.legend()
+plt.title("Predicted Peaks on New Spectrum")
+plt.xlabel("Energy Bin")
+plt.ylabel("Intensity")
+plt.show()
+
+
+check_peaks, _ = scipy.find_peaks(data1_array, prominence = 1e3)
+check_peaks_energy = (0.64844 + 0.27383 * np.array((25 * (check_peaks + 1))))
+
+print(check_peaks,"\n\n",check_peaks_energy)
