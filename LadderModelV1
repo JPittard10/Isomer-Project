@@ -1,0 +1,367 @@
+##### import random
+import requests
+import random
+import numpy as np
+import pandas as pd
+import scipy.signal as scipy
+import scipy.optimize as scipyo
+import matplotlib.pyplot as plt
+import scipy.optimize as optimize
+from scipy.signal import find_peaks
+from scipy.interpolate import interp1d
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split
+
+#----------- Opens Github Raw File -----------#
+
+github_url = "https://raw.githubusercontent.com/JPittard10/Isomer-Project/refs/heads/main/Trimmed%20and%20Bunched%20Spectrums/A1_Cl37_c10_HPGe_301sec_trimmed.txt"
+
+# ----------------- FUNCTIONS ------------------#
+
+
+
+
+
+
+
+
+
+
+# Name: Sir_Peaks_plotalot
+# Purpose : plots a line on the spectrum plot where the peak was identified
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : sir_peaks_printsalot( the array for where peaks want to be identified, name of the plot where the peak lines will be displayed i.e plot1 )
+
+def sir_peaks_plotalot(plot_array, plot_name):
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e2)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((plot_peaks) - 12.5))+6
+    for peak in plot_peaks_energy:
+        plot_name.axvline(x = peak, color = 'red', alpha = 0.1)
+    return(plot_peaks)
+
+
+# Name: Sir_Peaks_displayalot
+# Purpose : displays the energy of the peaks and their respective counts from greatest to largest count, and prints all of the peaks
+#           in order from the left to right side of the array
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : sir_peaks_displayalot( the array for where peaks want to be identified, the name of the array must start with a " ' " and end with a " ' " )
+
+def sir_peaks_displayalot(plot_array, plot_name):
+    plot_peaks, _ = scipy.find_peaks(plot_array, prominence = 1e2)
+    plot_peaks_energy = (0.64844 + 0.27383 * np.array((plot_peaks) - 12.5))+6
+    peak_counts = plot_array[plot_peaks]
+    sorted_peaks = np.argsort(peak_counts)[::-1]
+    print(f"Sorted Peaks For Plot '{plot_name}'")
+    print("Peak Energy (keV) | Counts")
+    print("-----------------------------")
+    for i in sorted_peaks:
+        peak_index = plot_peaks[i]
+        formatted_peak_energy = f"{plot_peaks_energy[i]:<17.3f}"
+        formatted_counts = f"{plot_array[peak_index]:<10.0f}"
+        print(f"{formatted_peak_energy} | {formatted_counts}")
+    print("-----------------------------")
+    print(f"Peaks For Plot '{plot_name}'")
+    print("Peak Energy (keV)")
+    for energy in plot_peaks_energy:
+        print(f"{energy:<0.3f}")
+    print("-----------------------------\n\n")
+
+
+# Name: plot_func
+# Purpose : plot a function
+# Creator : James Pittard - 29 / FEB / 2025
+# Function : plot_func( x axis data, y axis data, name of the x axis, name of the y axis, title of the plot,
+#                      units for the x axis, units for the y axis, color of the plot)
+
+def plot_func(x_axis_data, y_axis_data, x_axis_name, y_axis_name, title_name, x_axis_unit, y_axis_unit, color_type):
+    spec_plot = pd.DataFrame({x_axis_name: x_axis_data, y_axis_name: y_axis_data})
+    plot = spec_plot.plot(x = x_axis_name, y = y_axis_name, title = title_name,
+                          xlabel = x_axis_unit, ylabel = y_axis_unit, color = color_type, figsize = (12,6))
+    return(plot)
+
+
+# -------------- Pulls spectrum out of text file --------------#
+
+response = requests.get(github_url)
+
+data1 = response.text
+data1_array = np.array(list(map(int, data1.split())))
+bin_array = list(range(1,(len(data1_array)+1)))
+
+Energy_bin = 0.64844 + 0.27383 * np.array((np.array(bin_array)) - 12.5)
+
+
+#----------- Plots Raw spectrum and peaks -----------#
+
+raw_spec_plot = plot_func(Energy_bin, data1_array, 'Energy', 'Counts', 'Raw Spectrum', 'Energy (keV)', 'Counts', 'blue')
+peaks_raw_spec = sir_peaks_plotalot(data1_array, raw_spec_plot)
+plt.show()
+
+#------------ rel_height at 0.3 for background -------------#
+
+width, width_heights, left_ips, right_ips = scipy.peak_widths(data1_array, peaks_raw_spec, rel_height=0.3)
+
+#---------peak_remover and exponential fitter require cutting off the
+#         linear segment towards the beginning, done manually at the moment--------#
+
+
+
+
+
+
+def peak_remover(peak_array, peaks, left_ips, right_ip, width):
+    temp = peak_array.copy()
+    for i in range(len(peaks)):
+        width_bins = np.ceil(width/0.27383)
+        peak_index = int(peaks[i])
+        left_ips = int(peak_index - (2*(width_bins[i]))) 
+        right_ips = int(peak_index + (2*(width_bins[i]))) 
+        x_range = np.array(range(left_ips, right_ips+1))
+        #print(peak_index, left_ips, right_ips, x_range)
+        if left_ips <= len(temp):
+            linear_part = np.linspace(temp[left_ips], peak_array[right_ips], num= ((right_ips-left_ips)+1))
+        else:
+            linear_part = np.linspace(peak_array[left_ips], peak_array[right_ips], num= ((right_ips-left_ips)+1))
+        int_indices = np.round(x_range).astype(int)
+        np.put(temp, x_range, linear_part)
+    return(temp)
+        
+    #return(temp_array)
+
+
+smoothed = peak_remover(data1_array, peaks_raw_spec, left_ips, right_ips, width)
+
+
+#--------------Smoothed Spectrum Plot----------------#
+
+coeffs = np.polyfit(Energy_bin, smoothed, deg=3)
+poly_func = np.poly1d(coeffs)
+
+poly_fit = poly_func(Energy_bin)
+
+#please = peak_subtraction_background(data1_array, prominence=2.5e4)
+
+smooth_plot = plot_func(Energy_bin, smoothed, 'Energy', 'Counts', 'Background + Exponential Fit', 'Energy (keV)', 'Counts', 'blue')
+
+#plt.plot(Energy_bin, poly_fit)
+
+#-----------Quadratic Fit Plot-----------#
+
+
+
+#plt.plot(Energy_bin_fit, exponential_func(Energy_bin_fit, popt[0], popt[1], popt[2]), color='red', label='Exponential Fit')
+#plt.legend()
+
+#--------------Linear + Exponential fit (Linear needs manual adjustment at the moment-------------#
+
+plt.figure(4)
+
+
+
+#scipyoptimize fit
+
+
+
+
+plt.figure(5)
+
+#####
+def gaussian_peak(x, A, mu, sigma):
+    """
+    Compute the Gaussian peak function.
+
+    Parameters:
+    x : float or ndarray
+        Input value or array of values.
+    A : float, optional
+        Amplitude of the peak (default is 1).
+    mu : float, optional
+        Mean (center of the peak, default is 0).
+    sigma : float, optional
+        Standard deviation (controls width, default is 1).
+
+    Returns:
+    float or ndarray
+        The computed Gaussian function value.
+    """
+    return A * np.exp(-((x - mu) ** 2) / (2 * sigma ** 2))
+
+def peak_inserter(Energy_bin, peaks, width, data1_array):
+    num_peaks = len(peaks)
+    just_peaks = np.zeros(len(Energy_bin))
+    print(peaks)
+    for i in range(len(peaks)):
+        peak_index = peaks[i]
+        peak_height = data1_array[peak_index]
+        sd = width[i]/2
+        left = np.int64(np.ceil(peak_index - ((2*width[i])/0.27383)))
+        right = np.int64(np.ceil(peak_index + ((2*width[i])/0.27383)))
+        print(left, right)
+        x_range = np.array(range(left, right))
+        print(x_range)
+
+        gaussian_part = gaussian_peak(x_range, peak_height, x_range[int((right-left)/2)], sd)
+        print(gaussian_part)
+        print(peak_height)
+        print(peaks[i], 'peak index')
+        int_indices = np.round(x_range).astype(int)
+        np.add.at(just_peaks, int_indices, gaussian_part)
+        
+        
+
+
+        #print()
+        print(peak_height == gaussian_part[int((right-left)/2)])
+    
+    
+
+        
+    return just_peaks
+
+
+#-----------Adding peaks into simulation-----------------#
+
+just_peaks = peak_inserter(Energy_bin, peaks_raw_spec, width, data1_array)
+
+alone_peaks_plot = plot_func(Energy_bin, just_peaks, 'Energy', 'Counts', 'Just Peaks', 'Energy (keV)', 'Counts', 'blue')
+
+#-----------Adding peaks to smoothed plot-----------------#
+
+#model_true or smoothed
+model = np.maximum(just_peaks, smoothed)
+
+Base_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Base Model', 'Energy (keV)', 'Counts', 'blue')
+
+
+#-----------Plot of model smeared plot-----------------#
+
+smeared_model_plot = plot_func(Energy_bin, model, 'Energy', 'Counts', 'Model', 'Energy (keV)', 'Counts', 'blue')
+sir_peaks_plotalot(model, smeared_model_plot)
+plt.show()
+
+#----------- Differece plot-----------------#
+
+
+#------- Just a Gaussian Smear -----------#
+
+just_smear = data1_array * np.random.normal(.99, 1.01, len(data1_array))
+#------------#
+difference = (model - data1_array)
+avg_diff = np.mean(difference)
+std_diff = np.std(difference)
+std_diff_array = (difference - avg_diff) / std_diff
+
+Smeared_model_std_plot = plot_func(Energy_bin, std_diff_array, 'Energy', 'Standard Deviation', 'Difference Between Model and Actual Data', 'Energy (keV)', 'Standard Deviation (σ)', 'blue')
+sir_peaks_plotalot(std_diff_array, smeared_model_std_plot)
+plt.show()
+
+#-------------------- Difference Histogram ----------------#
+
+#------- Finding Peaks in difference plot -------#
+
+sir_peaks_displayalot(data1_array, 'Base Model')
+
+sir_peaks_displayalot(model_noisy, 'Smeared model')
+
+# do a combined fit, scipyoptimize
+
+print('width:', width)
+
+def peak_ladder_inserter(num_ladders, accuracy):
+    # needs peak_inserter(Energy_bin, peaks, width, data1_array)
+    # peaks are the spacings, data1_array is the heights
+    # have ladders with multiple branches?
+    peak_index = []
+    peak_height = []
+    peak_width = []
+    for i in range(num_ladders):
+        rungs = np.random.randint(3,5)
+        x0 = np.random.randint(0, len(Energy_bin))
+        x1 = np.random.randint(150, 1000)
+        d0 = np.random.randint(30, 400) 
+        for j in range(rungs):
+            w = np.int64(np.random.normal(np.mean(width_bins), accuracy))
+            if j == 0:
+                positions = [x0]
+                heights = [x1]
+                widths = [w]
+                w = np.int64(np.random.normal(np.mean(width_bins), accuracy))
+            print(j)
+            rung_index = positions[j] + (np.int64(d0*np.random.normal(1, accuracy)))
+            rung_height = np.int64(heights[j]*np.random.uniform(0.5, 0.9))
+            
+            if rung_index >= len(Energy_bin):
+                break
+            elif j == (rungs - 1):
+                positions.append(rung_index)
+                heights.append(rung_height)
+                widths.append(w)
+                peak_index.extend(positions)
+                peak_height.extend(heights)
+                peak_width.extend(widths)
+                
+            else:
+                positions.append(rung_index)
+                heights.append(rung_height)
+                widths.append(w)
+                                 
+    
+        
+
+    
+
+
+
+    
+    return(peak_index, peak_height, peak_width)
+
+
+peak_index, peak_height, peak_width = peak_ladder_inserter(5, 0.02)
+
+def ladder_finder(peaks_raw_spec, error):
+    xlist = np.zeros(len(peaks_raw_spec))
+    for i in range(len(peaks_raw_spec)-2):
+        x = peaks_raw_spec[i+1] - peaks_raw_spec[i]
+        y = peaks_raw_spec[i+2] - peaks_raw_spec[i+1]
+        if (x*(1+error) >= y and (x*(1-error) <= y) or ((y*(1+error)) >= x and (y*(1-error)) <= x)):
+            xlist[i:i+3] = True
+    return(xlist)
+
+def peak_inserter_ladder(Energy_bin, peaks, peak_height, width):
+    num_peaks = len(peaks)
+    just_peaks = np.zeros(len(Energy_bin))
+    print(peaks)
+    for i in range(len(peaks)):
+        peak_index = peaks[i]
+        peak_height_num = peak_height[i]
+        sd = width[i]/2
+        left = np.int64(np.ceil(peak_index - ((2*width[i])/0.27383)))
+        right = np.int64(np.ceil(peak_index + ((2*width[i])/0.27383)))
+        x_range = np.array(range(left, right))
+
+        gaussian_part = gaussian_peak(x_range, peak_height_num, x_range[int((right-left)/2)], sd)
+        int_indices = np.round(x_range).astype(int)
+        np.add.at(just_peaks, int_indices, gaussian_part)
+        
+        
+
+
+        #print()
+    
+    
+
+        
+    return just_peaks
+
+
+ladders = peak_inserter_ladder(Energy_bin, peak_index, peak_height, peak_width)
+
+ladders_peaks_plot = plot_func(Energy_bin, ladders, 'Energy', 'Counts', 'Just Peaks', 'Energy (keV)', 'Counts', 'blue')
+
+
+# Could put some normal random peaks in later
+ladder_model = np.maximum(ladders, smoothed)
+
+ladder_model_plot = plot_func(Energy_bin, ladder_model, 'Energy', 'Counts', 'Base Model', 'Energy (keV)', 'Counts', 'blue')
+
+
